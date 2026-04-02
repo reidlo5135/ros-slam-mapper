@@ -3,6 +3,13 @@
 namespace slam::graph::server
 {
 
+namespace
+{
+
+constexpr double kRadToDeg = 180.0 / 3.14159265358979323846;
+
+}  // namespace
+
 SlamPGraphServer::SlamPGraphServer(const rclcpp::NodeOptions &options)
 : rclcpp_lifecycle::LifecycleNode("slam_pgraph_server", options),
   frame_id_("map"),
@@ -18,7 +25,8 @@ SlamPGraphServer::SlamPGraphServer(const rclcpp::NodeOptions &options)
   mapping_pose_topic_("/slam/mapper/pose"),
   graph_debug_topic_("/slam/mapper/graph_debug"),
   publish_period_ms_(250),
-  publish_map_to_odom_tf_(true)
+  publish_map_to_odom_tf_(true),
+  update_map_to_odom_from_frontend_(false)
 {
   this->declare_parameter("frames.map", this->frame_id_);
   this->declare_parameter("frames.odom", this->odom_frame_);
@@ -34,6 +42,9 @@ SlamPGraphServer::SlamPGraphServer(const rclcpp::NodeOptions &options)
   this->declare_parameter("topics.graph_debug", this->graph_debug_topic_);
   this->declare_parameter("publish_period_ms", this->publish_period_ms_);
   this->declare_parameter("mapping.publish_map_to_odom_tf", this->publish_map_to_odom_tf_);
+  this->declare_parameter(
+    "mapping.update_map_to_odom_from_frontend",
+    this->update_map_to_odom_from_frontend_);
   this->scan_matcher_.declare_parameters(*this);
   this->pose_graph_server_.declare_parameters(*this);
   this->submap_server_.declare_parameters(*this);
@@ -56,6 +67,9 @@ SlamPGraphServer::CallbackReturn SlamPGraphServer::on_configure(const rclcpp_lif
   this->get_parameter("topics.graph_debug", this->graph_debug_topic_);
   this->get_parameter("publish_period_ms", this->publish_period_ms_);
   this->get_parameter("mapping.publish_map_to_odom_tf", this->publish_map_to_odom_tf_);
+  this->get_parameter(
+    "mapping.update_map_to_odom_from_frontend",
+    this->update_map_to_odom_from_frontend_);
 
   this->scan_matcher_.load_parameters(*this);
   this->pose_graph_server_.load_parameters(*this);
@@ -121,9 +135,27 @@ SlamPGraphServer::CallbackReturn SlamPGraphServer::on_configure(const rclcpp_lif
       this->publish_outputs();
     });
 
+  double keyframe_distance_threshold = 0.0;
+  double keyframe_yaw_threshold = 0.0;
+  double loop_closure_acceptance_score = 0.0;
+  double odom_edge_weight = 0.0;
+  double loop_edge_weight = 0.0;
+  this->get_parameter(
+    "pose_graph.keyframe_distance_threshold",
+    keyframe_distance_threshold);
+  this->get_parameter("pose_graph.keyframe_yaw_threshold", keyframe_yaw_threshold);
+  this->get_parameter(
+    "pose_graph.loop_closure_acceptance_score",
+    loop_closure_acceptance_score);
+  this->get_parameter("pose_graph.odom_edge_weight", odom_edge_weight);
+  this->get_parameter("pose_graph.loop_edge_weight", loop_edge_weight);
+
   RCLCPP_INFO(
     this->get_logger(),
-    "Configured SLAM pgraph server with odom='%s', imu='%s', scan='%s', temp_map='%s', temp_raw='%s', temp_refined='%s', corrected_odom='%s', mapping_pose='%s', graph_debug='%s'",
+    "Configured SLAM pgraph server with frames map='%s', odom='%s', base='%s', odom='%s', imu='%s', scan='%s', temp_map='%s', temp_raw='%s', temp_refined='%s', corrected_odom='%s', mapping_pose='%s', graph_debug='%s'",
+    this->frame_id_.c_str(),
+    this->odom_frame_.c_str(),
+    this->base_frame_.c_str(),
     this->odom_topic_.c_str(),
     this->imu_topic_.c_str(),
     this->scan_topic_.c_str(),
@@ -133,6 +165,20 @@ SlamPGraphServer::CallbackReturn SlamPGraphServer::on_configure(const rclcpp_lif
     this->corrected_odometry_topic_.c_str(),
     this->mapping_pose_topic_.c_str(),
     this->graph_debug_topic_.c_str());
+  RCLCPP_INFO(
+    this->get_logger(),
+    "TF policy publish_map_to_odom_tf=%s, update_map_to_odom_from_frontend=%s, publish_period_ms=%d",
+    this->publish_map_to_odom_tf_ ? "true" : "false",
+    this->update_map_to_odom_from_frontend_ ? "true" : "false",
+    this->publish_period_ms_);
+  RCLCPP_INFO(
+    this->get_logger(),
+    "Pose graph params keyframe_distance=%.3f m, keyframe_yaw=%.3f deg, loop_acceptance=%.3f, odom_edge_weight=%.3f, loop_edge_weight=%.3f",
+    keyframe_distance_threshold,
+    keyframe_yaw_threshold * kRadToDeg,
+    loop_closure_acceptance_score,
+    odom_edge_weight,
+    loop_edge_weight);
   return CallbackReturn::SUCCESS;
 }
 
@@ -157,6 +203,7 @@ SlamPGraphServer::CallbackReturn SlamPGraphServer::on_activate(const rclcpp_life
   if (this->graph_debug_publisher_) {
     this->graph_debug_publisher_->on_activate();
   }
+  RCLCPP_INFO(this->get_logger(), "Activated SLAM pgraph server");
   this->publish_outputs();
   return CallbackReturn::SUCCESS;
 }
@@ -182,6 +229,7 @@ SlamPGraphServer::CallbackReturn SlamPGraphServer::on_deactivate(const rclcpp_li
   if (this->graph_debug_publisher_) {
     this->graph_debug_publisher_->on_deactivate();
   }
+  RCLCPP_INFO(this->get_logger(), "Deactivated SLAM pgraph server");
   return CallbackReturn::SUCCESS;
 }
 
@@ -201,6 +249,7 @@ SlamPGraphServer::CallbackReturn SlamPGraphServer::on_cleanup(const rclcpp_lifec
   this->transform_broadcaster_.reset();
   this->pose_graph_server_.reset();
   this->submap_server_.reset(this->frame_id_, this->now());
+  RCLCPP_INFO(this->get_logger(), "Cleaned up SLAM pgraph server");
   return CallbackReturn::SUCCESS;
 }
 
@@ -332,6 +381,14 @@ void SlamPGraphServer::publish_map_to_odom_tf()
   transform.transform.translation.z = 0.0;
   this->scan_matcher_.set_quaternion_from_yaw(transform.transform.rotation, this->map_to_odom_.yaw);
   this->transform_broadcaster_->sendTransform(transform);
+  RCLCPP_INFO_THROTTLE(
+    this->get_logger(),
+    *this->get_clock(),
+    2000,
+    "Publishing map->odom TF x=%.3f m, y=%.3f m, yaw=%.3f deg",
+    this->map_to_odom_.x,
+    this->map_to_odom_.y,
+    this->map_to_odom_.yaw * kRadToDeg);
 }
 
 void SlamPGraphServer::handle_odometry(const nav_msgs::msg::Odometry::SharedPtr message)
@@ -341,7 +398,22 @@ void SlamPGraphServer::handle_odometry(const nav_msgs::msg::Odometry::SharedPtr 
   if (!this->has_start_odom_yaw_) {
     this->start_odom_yaw_ = this->scan_matcher_.quaternion_to_yaw(message->pose.pose.orientation);
     this->has_start_odom_yaw_ = true;
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Captured start odom yaw %.3f deg at x=%.3f m, y=%.3f m",
+      this->start_odom_yaw_ * kRadToDeg,
+      message->pose.pose.position.x,
+      message->pose.pose.position.y);
   }
+  RCLCPP_INFO_THROTTLE(
+    this->get_logger(),
+    *this->get_clock(),
+    2000,
+    "Odometry update x=%.3f m, y=%.3f m, yaw=%.3f deg, angular_z=%.3f rad/s",
+    message->pose.pose.position.x,
+    message->pose.pose.position.y,
+    this->scan_matcher_.quaternion_to_yaw(message->pose.pose.orientation) * kRadToDeg,
+    message->twist.twist.angular.z);
 }
 
 void SlamPGraphServer::handle_imu(const sensor_msgs::msg::Imu::SharedPtr message)
@@ -351,12 +423,27 @@ void SlamPGraphServer::handle_imu(const sensor_msgs::msg::Imu::SharedPtr message
   if (!this->has_start_imu_yaw_) {
     this->start_imu_yaw_ = this->latest_imu_yaw_;
     this->has_start_imu_yaw_ = true;
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Captured start IMU yaw %.3f deg",
+      this->start_imu_yaw_ * kRadToDeg);
   }
+  RCLCPP_INFO_THROTTLE(
+    this->get_logger(),
+    *this->get_clock(),
+    2000,
+    "IMU update yaw=%.3f deg",
+    this->latest_imu_yaw_ * kRadToDeg);
 }
 
 void SlamPGraphServer::handle_scan(const sensor_msgs::msg::LaserScan::SharedPtr message)
 {
   if (!this->has_latest_odometry_) {
+    RCLCPP_INFO_THROTTLE(
+      this->get_logger(),
+      *this->get_clock(),
+      5000,
+      "Waiting for odometry before processing scans");
     return;
   }
 
@@ -376,10 +463,19 @@ void SlamPGraphServer::handle_scan(const sensor_msgs::msg::LaserScan::SharedPtr 
   const nav_msgs::msg::OccupancyGrid front_end_map = this->submap_server_.raw_map();
   const Pose2D corrected_pose =
     this->scan_matcher_.refine_pose_with_scan_matching(front_end_map, *message, predicted_pose);
+  const Pose2D front_end_delta =
+    this->scan_matcher_.relative_pose(predicted_pose, corrected_pose);
 
   this->current_corrected_pose_ = corrected_pose;
   this->has_current_corrected_pose_ = true;
-  this->update_map_to_odom_transform(corrected_pose, raw_odom_pose);
+  if (this->update_map_to_odom_from_frontend_) {
+    this->update_map_to_odom_transform(corrected_pose, raw_odom_pose);
+    RCLCPP_INFO_THROTTLE(
+      this->get_logger(),
+      *this->get_clock(),
+      2000,
+      "Front-end updated map->odom TF from corrected pose");
+  }
   this->submap_server_.integrate_scan(*message, corrected_pose);
 
   const nav_msgs::msg::OccupancyGrid graph_map = this->submap_server_.raw_map();
@@ -391,6 +487,41 @@ void SlamPGraphServer::handle_scan(const sensor_msgs::msg::LaserScan::SharedPtr 
     std::abs(this->latest_odometry_.twist.twist.angular.z),
     graph_map,
     this->scan_matcher_);
+
+  RCLCPP_INFO_THROTTLE(
+    this->get_logger(),
+    *this->get_clock(),
+    2000,
+    "Scan cycle raw=(%.3f, %.3f, %.3f deg) predicted=(%.3f, %.3f, %.3f deg) corrected=(%.3f, %.3f, %.3f deg) delta=(%.3f m, %.3f m, %.3f deg) graph_nodes=%zu",
+    raw_odom_pose.x,
+    raw_odom_pose.y,
+    raw_odom_pose.yaw * kRadToDeg,
+    predicted_pose.x,
+    predicted_pose.y,
+    predicted_pose.yaw * kRadToDeg,
+    corrected_pose.x,
+    corrected_pose.y,
+    corrected_pose.yaw * kRadToDeg,
+    front_end_delta.x,
+    front_end_delta.y,
+    front_end_delta.yaw * kRadToDeg,
+    this->pose_graph_server_.graph_nodes().size());
+
+  if (graph_update.node_added) {
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Added graph node count=%zu latest_pose=(%.3f, %.3f, %.3f deg)",
+      this->pose_graph_server_.graph_nodes().size(),
+      corrected_pose.x,
+      corrected_pose.y,
+      corrected_pose.yaw * kRadToDeg);
+  }
+
+  if (graph_update.loop_accepted) {
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Accepted loop closure; rebuilding map from pose graph");
+  }
 
   if (graph_update.graph_rebuild_needed) {
     std::vector<slam::submap::server::SubmapNode> rebuild_nodes;
@@ -404,6 +535,15 @@ void SlamPGraphServer::handle_scan(const sensor_msgs::msg::LaserScan::SharedPtr 
     this->submap_server_.rebuild_map_from_pose_graph(rebuild_nodes, this->now());
     this->current_corrected_pose_ = graph_update.latest_pose;
     this->update_map_to_odom_transform(this->current_corrected_pose_, raw_odom_pose);
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Back-end updated map->odom after graph rebuild latest_pose=(%.3f, %.3f, %.3f deg) tf=(%.3f, %.3f, %.3f deg)",
+      this->current_corrected_pose_.x,
+      this->current_corrected_pose_.y,
+      this->current_corrected_pose_.yaw * kRadToDeg,
+      this->map_to_odom_.x,
+      this->map_to_odom_.y,
+      this->map_to_odom_.yaw * kRadToDeg);
   }
 }
 

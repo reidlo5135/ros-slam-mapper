@@ -14,3 +14,5 @@ Changelog
   - migrated the pasted ``amr_slam_mapper`` business logic into split ``slam_*`` packages
   - localized the standalone bringup parameters onto ``/slam/*`` topics
   - refactored ``slam_mapper`` back into a metapackage-only entry package following the ``amr_navigation`` pattern
+  - moved ``map->odom`` ownership in ``slam_pgraph_server`` to a safer back-end-first default policy
+  - added ``RCLCPP_INFO`` diagnostics across ``slam_pgraph_server``, ``slam_scan_matcher``, and ``slam_submap_server``

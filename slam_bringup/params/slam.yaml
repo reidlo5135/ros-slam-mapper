@@ -88,6 +88,7 @@
         min: 0.05
         max: 8.0
       publish_map_to_odom_tf: true
+      update_map_to_odom_from_frontend: false
     motion_prior:
       use_imu_heading: false
       imu_heading_rotation_threshold: 0.25
