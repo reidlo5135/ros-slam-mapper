@@ -33,6 +33,8 @@ This project is building toward a standalone SLAM mapping line with:
 - separate the work from `ros-amr-navigation` contracts and `/amr/*` topic ownership
 - establish repository rules around `README.md`, `TODO.md`, `CHANGELOG.rst`, and `coding_template.txt`
 - finish stabilizing the localized package split on `/slam/*`
+- after `amr_slam_mapper` copy, run-up test after launch and topic-name replacement
+- split `slam_mapper` package R&R cleanly
 
 ## Immediate Focus
 
@@ -108,3 +110,21 @@ This project is building toward a standalone SLAM mapping line with:
   - loop acceptance timing
   - false loop avoidance
   - rebuild consistency
+
+## 2026-04-06 Follow-Up
+
+- stop adding standalone-only behavior before the `amr_slam_mapper` `0.14.4` baseline is faithfully localized
+- audit the current `ros-slam-mapper` runtime against `ros-amr-navigation/amr_slam_mapper` `humble/develop/0.14.4`
+  - identify every intentional and accidental behavior delta
+  - especially check loop acceptance, graph rebuild timing, and `map -> odom` handling
+- list which parts of the current split are pure package relocation and which parts changed business logic
+- revert or realign any post-port additions that were not part of the original `amr_slam_mapper` `0.14.4` behavior
+- compare loop-generation timing between the standalone repo and the original AMR line
+  - confirm whether the loop is being accepted earlier, more often, or with different correction magnitude
+- inspect why straight driving remains stable but the map tilts immediately after loop creation
+  - check loop edge construction
+  - check optimizer anchor behavior
+  - check rebuild pose application order
+  - check TF update timing relative to loop acceptance
+- prepare a conservative fix list only after the behavior delta from `0.14.4` is clearly documented
+- do not implement new front-end or back-end ideas until the baseline mismatch is closed
