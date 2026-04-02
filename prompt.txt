@@ -1,0 +1,67 @@
+Repo: /home/reidlo/ws/src/ros-amr-navigation
+
+Reference repo to compare against:
+- /home/reidlo/ws/src/ros-slam-mapper
+
+Reference commit in ros-slam-mapper:
+- e92a9ed feat: split standalone slam mapper packages
+
+Task:
+- Review the standalone split work in `ros-slam-mapper` and extract only the parts that are relevant as follow-up context for the AMR-side line.
+- Do NOT blindly copy the standalone package layout into `ros-amr-navigation`.
+- Focus on what changed conceptually:
+  - `slam_mapper` is now treated as a metapackage-only entry package
+  - actual runnable nodes belong to their own packages
+  - bringup owns launch aggregation and parameter aggregation
+  - `/amr/*` vs `/slam/*` topic naming was intentionally separated in the standalone repo
+- On the AMR side, preserve existing AMR contracts unless there is a very strong reason to change them.
+
+What happened in ros-slam-mapper:
+1. `amr_slam_mapper` business logic was preserved as much as possible.
+2. The code was split across:
+   - `slam_scan_matcher`
+   - `slam_submap_server`
+   - `slam_pgraph_server`
+3. `slam_pgraph_server` currently owns the main runtime orchestration path.
+4. `slam_scan_matcher` and `slam_submap_server` each now have their own node entrypoints and package-local `main.cpp`.
+5. `slam_mapper` was refactored into a pure metapackage, similar to `amr_navigation`.
+6. `slam_bringup` now owns launch and consolidated params.
+
+What I need from you:
+- Inspect the AMR-side `amr_slam_mapper` and compare it against the standalone split.
+- Summarize which parts of the standalone refactor are useful lessons for the AMR repo, and which parts should NOT be applied there.
+- Pay special attention to:
+  - whether `amr_navigation` / `amr_bringup` patterns suggest a cleaner packaging boundary for future AMR SLAM work
+  - whether AMR-side launch/param ownership is already aligned well enough
+  - whether there are any business-logic risks introduced by the standalone split approach
+- Do not implement broad AMR-side refactors yet unless they are clearly safe and narrow.
+- If you propose changes, keep them conservative and contract-safe.
+
+Files to inspect first in ros-slam-mapper:
+- README.md
+- TODO.md
+- CHANGELOG.rst
+- coding_template.txt
+- slam_mapper/package.xml
+- slam_mapper/CMakeLists.txt
+- slam_bringup/launch/slam.launch.py
+- slam_bringup/params/slam.yaml
+- slam_pgraph_server/include/slam_pgraph_server/slam_pgraph_server.hpp
+- slam_pgraph_server/src/slam_pgraph_server/slam_pgraph_server.cpp
+- slam_scan_matcher/include/slam_scan_matcher/scan_matcher.hpp
+- slam_submap_server/include/slam_submap_server/submap_server.hpp
+
+Files to inspect first in ros-amr-navigation:
+- amr_navigation/package.xml
+- amr_navigation/CMakeLists.txt
+- amr_bringup/params/amr.yaml
+- amr_slam_mapper/README.md
+- amr_slam_mapper/TODO.md
+- amr_slam_mapper/include/amr_slam_mapper/slam_mapper.hpp
+- amr_slam_mapper/src/amr_slam_mapper/slam_mapper.cpp
+
+Output format:
+- First: findings / risks / mismatches
+- Then: what is reusable from the standalone split
+- Then: what should remain AMR-specific
+- Then: optional conservative next steps
