@@ -25,9 +25,7 @@ SlamPGraphServer::SlamPGraphServer(const rclcpp::NodeOptions &options)
   mapping_pose_topic_("/slam/mapper/pose"),
   graph_debug_topic_("/slam/mapper/graph_debug"),
   publish_period_ms_(250),
-  publish_map_to_odom_tf_(true),
-  front_end_recent_nodes_(20),
-  front_end_min_recent_nodes_(6)
+  publish_map_to_odom_tf_(true)
 {
   this->declare_parameter("frames.map", this->frame_id_);
   this->declare_parameter("frames.odom", this->odom_frame_);
@@ -43,8 +41,6 @@ SlamPGraphServer::SlamPGraphServer(const rclcpp::NodeOptions &options)
   this->declare_parameter("topics.graph_debug", this->graph_debug_topic_);
   this->declare_parameter("publish_period_ms", this->publish_period_ms_);
   this->declare_parameter("mapping.publish_map_to_odom_tf", this->publish_map_to_odom_tf_);
-  this->declare_parameter("front_end.recent_nodes", this->front_end_recent_nodes_);
-  this->declare_parameter("front_end.min_recent_nodes", this->front_end_min_recent_nodes_);
   this->scan_matcher_.declare_parameters(*this);
   this->pose_graph_server_.declare_parameters(*this);
   this->submap_server_.declare_parameters(*this);
@@ -67,8 +63,6 @@ SlamPGraphServer::CallbackReturn SlamPGraphServer::on_configure(const rclcpp_lif
   this->get_parameter("topics.graph_debug", this->graph_debug_topic_);
   this->get_parameter("publish_period_ms", this->publish_period_ms_);
   this->get_parameter("mapping.publish_map_to_odom_tf", this->publish_map_to_odom_tf_);
-  this->get_parameter("front_end.recent_nodes", this->front_end_recent_nodes_);
-  this->get_parameter("front_end.min_recent_nodes", this->front_end_min_recent_nodes_);
 
   this->scan_matcher_.load_parameters(*this);
   this->pose_graph_server_.load_parameters(*this);
@@ -166,11 +160,9 @@ SlamPGraphServer::CallbackReturn SlamPGraphServer::on_configure(const rclcpp_lif
     this->graph_debug_topic_.c_str());
   RCLCPP_INFO(
     this->get_logger(),
-    "TF policy publish_map_to_odom_tf=%s, publish_period_ms=%d, front_end_recent_nodes=%d, front_end_min_recent_nodes=%d",
+    "TF policy publish_map_to_odom_tf=%s, publish_period_ms=%d",
     this->publish_map_to_odom_tf_ ? "true" : "false",
-    this->publish_period_ms_,
-    this->front_end_recent_nodes_,
-    this->front_end_min_recent_nodes_);
+    this->publish_period_ms_);
   RCLCPP_INFO(
     this->get_logger(),
     "Pose graph params keyframe_distance=%.3f m, keyframe_yaw=%.3f deg, loop_acceptance=%.3f, odom_edge_weight=%.3f, loop_edge_weight=%.3f",
@@ -460,27 +452,7 @@ void SlamPGraphServer::handle_scan(const sensor_msgs::msg::LaserScan::SharedPtr 
   const Pose2D raw_odom_pose =
     this->scan_matcher_.build_raw_odom_pose(this->latest_odometry_, motion_prior_state);
   const Pose2D predicted_pose = this->apply_map_to_odom_transform(raw_odom_pose);
-  nav_msgs::msg::OccupancyGrid front_end_map = this->submap_server_.raw_map();
-  std::string front_end_map_source = "global";
-  const std::vector<GraphNode> &graph_nodes = this->pose_graph_server_.graph_nodes();
-  if (
-    static_cast<int>(graph_nodes.size()) >= std::max(1, this->front_end_min_recent_nodes_) &&
-    this->front_end_recent_nodes_ > 0)
-  {
-    std::vector<slam::submap::server::SubmapNode> recent_nodes;
-    const std::size_t recent_node_count = static_cast<std::size_t>(this->front_end_recent_nodes_);
-    const std::size_t start_index =
-      graph_nodes.size() > recent_node_count ? graph_nodes.size() - recent_node_count : 0U;
-    recent_nodes.reserve(graph_nodes.size() - start_index);
-    for (std::size_t index = start_index; index < graph_nodes.size(); ++index) {
-      slam::submap::server::SubmapNode recent_node;
-      recent_node.map_pose = graph_nodes[index].map_pose;
-      recent_node.scan = graph_nodes[index].scan;
-      recent_nodes.push_back(recent_node);
-    }
-    front_end_map = this->submap_server_.build_map_from_nodes(recent_nodes, this->now());
-    front_end_map_source = "recent_local";
-  }
+  const nav_msgs::msg::OccupancyGrid front_end_map = this->submap_server_.raw_map();
   const Pose2D corrected_pose =
     this->scan_matcher_.refine_pose_with_scan_matching(front_end_map, *message, predicted_pose);
   const Pose2D front_end_delta =
@@ -519,13 +491,6 @@ void SlamPGraphServer::handle_scan(const sensor_msgs::msg::LaserScan::SharedPtr 
     front_end_delta.y,
     front_end_delta.yaw * kRadToDeg,
     this->pose_graph_server_.graph_nodes().size());
-  RCLCPP_INFO_THROTTLE(
-    this->get_logger(),
-    *this->get_clock(),
-    2000,
-    "Front-end map source=%s graph_nodes=%zu",
-    front_end_map_source.c_str(),
-    graph_nodes.size());
 
   if (graph_update.node_added) {
     RCLCPP_INFO(

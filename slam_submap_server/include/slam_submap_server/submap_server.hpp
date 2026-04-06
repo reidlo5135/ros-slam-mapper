@@ -53,7 +53,6 @@ private:
   int refinement_min_occupied_neighbor_count_;
   int refinement_min_free_neighbor_count_;
 
-  nav_msgs::msg::OccupancyGrid create_initialized_map(const rclcpp::Time &stamp) const;
   void initialize_mapping_map(const rclcpp::Time &stamp);
   nav_msgs::msg::OccupancyGrid build_refined_map(
     const nav_msgs::msg::OccupancyGrid &source_map) const;
@@ -116,9 +115,6 @@ public:
   void load_parameters(rclcpp_lifecycle::LifecycleNode &node);
   void reset(const std::string &frame_id, const rclcpp::Time &stamp);
   void integrate_scan(const sensor_msgs::msg::LaserScan &scan, const Pose2D &corrected_pose);
-  nav_msgs::msg::OccupancyGrid build_map_from_nodes(
-    const std::vector<SubmapNode> &graph_nodes,
-    const rclcpp::Time &stamp) const;
   void rebuild_map_from_pose_graph(const std::vector<SubmapNode> &graph_nodes, const rclcpp::Time &stamp);
   void refresh_refined_map(const rclcpp::Time &stamp);
   nav_msgs::msg::OccupancyGrid raw_map() const;

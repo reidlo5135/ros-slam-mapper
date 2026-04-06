@@ -76,9 +76,6 @@
       mapping_pose: "/slam/mapper/pose"
       graph_debug: "/slam/mapper/graph_debug"
     publish_period_ms: 250
-    front_end:
-      recent_nodes: 20
-      min_recent_nodes: 6
     mapping:
       resolution: 0.05
       width: 400

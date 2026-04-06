@@ -76,7 +76,7 @@ void SubmapServer::reset(const std::string &frame_id, const rclcpp::Time &stamp)
   this->initialize_mapping_map(stamp);
 }
 
-nav_msgs::msg::OccupancyGrid SubmapServer::create_initialized_map(const rclcpp::Time &stamp) const
+void SubmapServer::initialize_mapping_map(const rclcpp::Time &stamp)
 {
   nav_msgs::msg::OccupancyGrid initialized_map;
   initialized_map.header.stamp = stamp;
@@ -96,13 +96,6 @@ nav_msgs::msg::OccupancyGrid SubmapServer::create_initialized_map(const rclcpp::
     static_cast<std::size_t>(this->mapping_width_ * this->mapping_height_),
     static_cast<int8_t>(-1));
 
-  return initialized_map;
-}
-
-void SubmapServer::initialize_mapping_map(const rclcpp::Time &stamp)
-{
-  nav_msgs::msg::OccupancyGrid initialized_map = this->create_initialized_map(stamp);
-
   std::scoped_lock<std::mutex> lock(this->map_mutex_);
   this->temporary_map_ = initialized_map;
   this->refined_temporary_map_ = this->temporary_map_;
@@ -117,22 +110,6 @@ void SubmapServer::integrate_scan(
 {
   std::scoped_lock<std::mutex> lock(this->map_mutex_);
   this->integrate_scan_into_map(scan, corrected_pose, this->temporary_map_, this->occupancy_scores_);
-}
-
-nav_msgs::msg::OccupancyGrid SubmapServer::build_map_from_nodes(
-  const std::vector<SubmapNode> &graph_nodes,
-  const rclcpp::Time &stamp) const
-{
-  nav_msgs::msg::OccupancyGrid local_map = this->create_initialized_map(stamp);
-  std::vector<int16_t> occupancy_scores(
-    static_cast<std::size_t>(this->mapping_width_ * this->mapping_height_),
-    0);
-
-  for (const SubmapNode &node : graph_nodes) {
-    this->integrate_scan_into_map(node.scan, node.map_pose, local_map, occupancy_scores);
-  }
-
-  return local_map;
 }
 
 void SubmapServer::rebuild_map_from_pose_graph(
