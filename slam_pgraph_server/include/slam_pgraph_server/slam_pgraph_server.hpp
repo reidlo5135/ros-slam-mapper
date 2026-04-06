@@ -75,6 +75,8 @@ private:
   std::string graph_debug_topic_;
   int publish_period_ms_;
   bool publish_map_to_odom_tf_;
+  int front_end_recent_nodes_;
+  int front_end_min_recent_nodes_;
 
   CallbackReturn on_configure(const rclcpp_lifecycle::State &state) override;
   CallbackReturn on_activate(const rclcpp_lifecycle::State &state) override;
