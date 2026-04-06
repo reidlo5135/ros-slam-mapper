@@ -36,6 +36,12 @@ struct MotionPriorState
 class ScanMatcher
 {
 private:
+  struct CandidateSearchResult
+  {
+    Pose2D pose{};
+    double score{-std::numeric_limits<double>::infinity()};
+  };
+
   bool use_imu_heading_;
   double imu_heading_rotation_threshold_;
   double imu_heading_blend_gain_;
@@ -62,6 +68,9 @@ private:
   double scan_matching_max_yaw_correction_deg_;
   double scan_matching_translation_regularization_weight_;
   double scan_matching_yaw_regularization_weight_;
+  double scan_matching_coarse_linear_step_multiplier_;
+  double scan_matching_coarse_angular_step_multiplier_;
+  double scan_matching_fine_window_scale_;
 
   double nearest_occupied_distance_cells(
     const nav_msgs::msg::OccupancyGrid &map,
@@ -84,6 +93,16 @@ private:
     int grid_x,
     int grid_y,
     std::size_t &index) const;
+  CandidateSearchResult search_best_pose_in_window(
+    const nav_msgs::msg::OccupancyGrid &map,
+    const sensor_msgs::msg::LaserScan &scan,
+    const Pose2D &center_pose,
+    double linear_window,
+    double linear_step,
+    double angular_window_rad,
+    double angular_step_rad,
+    double translation_regularization_weight,
+    double yaw_regularization_weight) const;
 
 protected:
 public:

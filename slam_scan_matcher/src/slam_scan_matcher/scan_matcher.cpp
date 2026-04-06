@@ -27,7 +27,10 @@ ScanMatcher::ScanMatcher()
   scan_matching_max_translation_correction_(0.08),
   scan_matching_max_yaw_correction_deg_(6.0),
   scan_matching_translation_regularization_weight_(5.0),
-  scan_matching_yaw_regularization_weight_(0.75)
+  scan_matching_yaw_regularization_weight_(0.75),
+  scan_matching_coarse_linear_step_multiplier_(3.0),
+  scan_matching_coarse_angular_step_multiplier_(3.0),
+  scan_matching_fine_window_scale_(0.5)
 {
 }
 
@@ -81,6 +84,15 @@ void ScanMatcher::declare_parameters(rclcpp_lifecycle::LifecycleNode &node) cons
   node.declare_parameter(
     "scan_matching.yaw_regularization_weight",
     this->scan_matching_yaw_regularization_weight_);
+  node.declare_parameter(
+    "scan_matching.coarse_linear_step_multiplier",
+    this->scan_matching_coarse_linear_step_multiplier_);
+  node.declare_parameter(
+    "scan_matching.coarse_angular_step_multiplier",
+    this->scan_matching_coarse_angular_step_multiplier_);
+  node.declare_parameter(
+    "scan_matching.fine_window_scale",
+    this->scan_matching_fine_window_scale_);
 }
 
 void ScanMatcher::load_parameters(rclcpp_lifecycle::LifecycleNode &node)
@@ -133,6 +145,15 @@ void ScanMatcher::load_parameters(rclcpp_lifecycle::LifecycleNode &node)
   node.get_parameter(
     "scan_matching.yaw_regularization_weight",
     this->scan_matching_yaw_regularization_weight_);
+  node.get_parameter(
+    "scan_matching.coarse_linear_step_multiplier",
+    this->scan_matching_coarse_linear_step_multiplier_);
+  node.get_parameter(
+    "scan_matching.coarse_angular_step_multiplier",
+    this->scan_matching_coarse_angular_step_multiplier_);
+  node.get_parameter(
+    "scan_matching.fine_window_scale",
+    this->scan_matching_fine_window_scale_);
 }
 
 Pose2D ScanMatcher::build_raw_odom_pose(
@@ -201,49 +222,42 @@ Pose2D ScanMatcher::refine_pose_with_scan_matching(
     std::max(0.0, this->scan_matching_translation_regularization_weight_);
   const double yaw_regularization_weight =
     std::max(0.0, this->scan_matching_yaw_regularization_weight_);
+  const double coarse_linear_step = std::max(
+    linear_step,
+    linear_step * std::max(1.0, this->scan_matching_coarse_linear_step_multiplier_));
+  const double coarse_angular_step_rad = std::max(
+    angular_step_rad,
+    angular_step_rad * std::max(1.0, this->scan_matching_coarse_angular_step_multiplier_));
+  const double fine_window_scale = std::clamp(this->scan_matching_fine_window_scale_, 0.1, 1.0);
+  const double fine_linear_window = std::max(linear_step, linear_window * fine_window_scale);
+  const double fine_angular_window_rad = std::max(
+    angular_step_rad,
+    angular_window_rad * fine_window_scale);
 
-  Pose2D best_pose = predicted_pose;
   const double predicted_score = this->score_scan_candidate(map, scan, predicted_pose);
-  double best_score = predicted_score;
+  CandidateSearchResult coarse_result = this->search_best_pose_in_window(
+    map,
+    scan,
+    predicted_pose,
+    linear_window,
+    coarse_linear_step,
+    angular_window_rad,
+    coarse_angular_step_rad,
+    translation_regularization_weight,
+    yaw_regularization_weight);
+  CandidateSearchResult fine_result = this->search_best_pose_in_window(
+    map,
+    scan,
+    coarse_result.pose,
+    fine_linear_window,
+    linear_step,
+    fine_angular_window_rad,
+    angular_step_rad,
+    translation_regularization_weight,
+    yaw_regularization_weight);
 
-  for (double delta_x = -linear_window; delta_x <= linear_window + 1e-6; delta_x += linear_step) {
-    for (double delta_y = -linear_window; delta_y <= linear_window + 1e-6; delta_y += linear_step) {
-      for (
-        double delta_yaw = -angular_window_rad;
-        delta_yaw <= angular_window_rad + 1e-6;
-        delta_yaw += angular_step_rad)
-      {
-        if (
-          std::abs(delta_x) < 1e-9 &&
-          std::abs(delta_y) < 1e-9 &&
-          std::abs(delta_yaw) < 1e-9)
-        {
-          continue;
-        }
-
-        Pose2D candidate_pose{};
-        candidate_pose.x = predicted_pose.x + delta_x;
-        candidate_pose.y = predicted_pose.y + delta_y;
-        candidate_pose.yaw = this->normalize_angle(predicted_pose.yaw + delta_yaw);
-
-        const double candidate_score = this->score_scan_candidate(map, scan, candidate_pose);
-        if (!std::isfinite(candidate_score)) {
-          continue;
-        }
-
-        const double correction_translation = std::hypot(delta_x, delta_y);
-        const double correction_yaw_deg = std::abs(delta_yaw) / kDegToRad;
-        const double regularized_score =
-          candidate_score -
-          (translation_regularization_weight * correction_translation) -
-          (yaw_regularization_weight * correction_yaw_deg);
-        if (regularized_score > best_score) {
-          best_score = regularized_score;
-          best_pose = candidate_pose;
-        }
-      }
-    }
-  }
+  Pose2D best_pose = fine_result.pose;
+  double best_score = fine_result.score;
 
   const double correction_x = best_pose.x - predicted_pose.x;
   const double correction_y = best_pose.y - predicted_pose.y;
@@ -261,6 +275,81 @@ Pose2D ScanMatcher::refine_pose_with_scan_matching(
   }
 
   return best_pose;
+}
+
+ScanMatcher::CandidateSearchResult ScanMatcher::search_best_pose_in_window(
+  const nav_msgs::msg::OccupancyGrid &map,
+  const sensor_msgs::msg::LaserScan &scan,
+  const Pose2D &center_pose,
+  double linear_window,
+  double linear_step,
+  double angular_window_rad,
+  double angular_step_rad,
+  double translation_regularization_weight,
+  double yaw_regularization_weight) const
+{
+  constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
+
+  CandidateSearchResult result{};
+  result.pose = center_pose;
+  result.score = this->score_scan_candidate(map, scan, center_pose);
+
+  const double safe_linear_window = std::max(0.0, linear_window);
+  const double safe_linear_step = std::max(0.01, linear_step);
+  const double safe_angular_window = std::max(0.0, angular_window_rad);
+  const double safe_angular_step = std::max((1.0 * kDegToRad), angular_step_rad);
+
+  for (
+    double delta_x = -safe_linear_window;
+    delta_x <= safe_linear_window + 1e-6;
+    delta_x += safe_linear_step)
+  {
+    for (
+      double delta_y = -safe_linear_window;
+      delta_y <= safe_linear_window + 1e-6;
+      delta_y += safe_linear_step)
+    {
+      for (
+        double delta_yaw = -safe_angular_window;
+        delta_yaw <= safe_angular_window + 1e-6;
+        delta_yaw += safe_angular_step)
+      {
+        if (
+          std::abs(delta_x) < 1e-9 &&
+          std::abs(delta_y) < 1e-9 &&
+          std::abs(delta_yaw) < 1e-9)
+        {
+          continue;
+        }
+
+        Pose2D candidate_pose{};
+        candidate_pose.x = center_pose.x + delta_x;
+        candidate_pose.y = center_pose.y + delta_y;
+        candidate_pose.yaw = this->normalize_angle(center_pose.yaw + delta_yaw);
+
+        const double candidate_score = this->score_scan_candidate(map, scan, candidate_pose);
+        if (!std::isfinite(candidate_score)) {
+          continue;
+        }
+
+        const double correction_translation = std::hypot(
+          candidate_pose.x - center_pose.x,
+          candidate_pose.y - center_pose.y);
+        const double correction_yaw_deg =
+          std::abs(this->normalize_angle(candidate_pose.yaw - center_pose.yaw)) / kDegToRad;
+        const double regularized_score =
+          candidate_score -
+          (translation_regularization_weight * correction_translation) -
+          (yaw_regularization_weight * correction_yaw_deg);
+        if (regularized_score > result.score) {
+          result.score = regularized_score;
+          result.pose = candidate_pose;
+        }
+      }
+    }
+  }
+
+  return result;
 }
 
 double ScanMatcher::score_scan_candidate(

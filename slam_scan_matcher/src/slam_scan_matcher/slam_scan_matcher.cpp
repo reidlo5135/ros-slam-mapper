@@ -29,6 +29,9 @@ SlamScanMatcher::CallbackReturn SlamScanMatcher::on_configure(const rclcpp_lifec
   double angular_window_deg = 0.0;
   double max_translation_correction = 0.0;
   double max_yaw_correction_deg = 0.0;
+  double coarse_linear_step_multiplier = 0.0;
+  double coarse_angular_step_multiplier = 0.0;
+  double fine_window_scale = 0.0;
   this->get_parameter("motion_prior.use_imu_heading", use_imu_heading);
   this->get_parameter(
     "motion_prior.imu_heading_rotation_threshold",
@@ -40,6 +43,13 @@ SlamScanMatcher::CallbackReturn SlamScanMatcher::on_configure(const rclcpp_lifec
     "scan_matching.max_translation_correction",
     max_translation_correction);
   this->get_parameter("scan_matching.max_yaw_correction_deg", max_yaw_correction_deg);
+  this->get_parameter(
+    "scan_matching.coarse_linear_step_multiplier",
+    coarse_linear_step_multiplier);
+  this->get_parameter(
+    "scan_matching.coarse_angular_step_multiplier",
+    coarse_angular_step_multiplier);
+  this->get_parameter("scan_matching.fine_window_scale", fine_window_scale);
   RCLCPP_INFO(
     this->get_logger(),
     "Configured SLAM scan matcher utility node with odom='%s', imu='%s', scan='%s'",
@@ -59,6 +69,12 @@ SlamScanMatcher::CallbackReturn SlamScanMatcher::on_configure(const rclcpp_lifec
     angular_window_deg,
     max_translation_correction,
     max_yaw_correction_deg);
+  RCLCPP_INFO(
+    this->get_logger(),
+    "Scan matcher search coarse_linear_step_multiplier=%.3f, coarse_angular_step_multiplier=%.3f, fine_window_scale=%.3f",
+    coarse_linear_step_multiplier,
+    coarse_angular_step_multiplier,
+    fine_window_scale);
   return CallbackReturn::SUCCESS;
 }
 

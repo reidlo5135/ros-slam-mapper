@@ -32,6 +32,9 @@
       max_yaw_correction_deg: 6.0
       translation_regularization_weight: 5.0
       yaw_regularization_weight: 0.75
+      coarse_linear_step_multiplier: 3.0
+      coarse_angular_step_multiplier: 3.0
+      fine_window_scale: 0.5
 
 /slam/slam_submap_server:
   ros__parameters:
@@ -112,6 +115,9 @@
       max_yaw_correction_deg: 6.0
       translation_regularization_weight: 5.0
       yaw_regularization_weight: 0.75
+      coarse_linear_step_multiplier: 3.0
+      coarse_angular_step_multiplier: 3.0
+      fine_window_scale: 0.5
     occupancy:
       hit_score: 20
       free_score: 3
