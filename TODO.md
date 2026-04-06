@@ -270,7 +270,63 @@ sequenceDiagram
   - rebuild consistency
   - pixel retention after loop-triggered rebuild
 
-## 2026-04-06 Follow-Up
+## Daily Plan
+
+### 2026-04-08
+
+- continue from `PH-2` instead of opening a new architecture branch too early
+- keep the current `0.2.1` result as the comparison baseline
+- use the same replay / driving pattern for every comparison:
+  - straight corridor
+  - large right turn and return
+  - wider left-side excursion from origin
+  - final origin revisit
+
+### PH-2 Next
+
+- tune `coarse_linear_step_multiplier`
+  - goal: keep large-turn recovery while avoiding straight-line overreaction
+- tune `coarse_angular_step_multiplier`
+  - goal: improve heading recovery after turns without adding corridor yaw jitter
+- tune `fine_window_scale`
+  - goal: improve last-meter alignment without making the matcher twitchy
+- compare logs and map results together:
+  - `predicted_score -> coarse_score -> fine_score`
+  - `score_improvement`
+  - `correction magnitude`
+  - `reject_reason`
+- accept a tuning set only if:
+  - straight driving stays visually stable
+  - wider left-side drift is reduced or unchanged
+  - last origin revisit still aligns cleanly
+  - matcher does not apply unnecessary corrections when the pose is already good
+
+### PH-3 Entry Criteria
+
+- start `PH-3` only if `PH-2` tuning plateaus
+- if `coarse/fine` search keeps producing:
+  - low or zero improvement on visually correct poses
+  - weak separation between good and bad nearby candidates
+  - limited recovery during wider excursions
+  then move to score-model work
+- `PH-3` target areas:
+  - `occupied_match_score`
+  - `distance_match_score`
+  - `distance_penalty_per_cell`
+  - `free_space_penalty`
+  - occupied / distance search radius balance
+
+### PH-3 Goal
+
+- make the matcher distinguish:
+  - truly better wall alignment
+  - merely nearby but not better candidates
+- improve scan-to-map scoring quality before discussing:
+  - real submaps
+  - optimizer surgery
+  - occupancy-grid drawing refinement
+
+### 2026-04-06
 
 - stop adding standalone-only behavior before the `amr_slam_mapper` `0.14.4` baseline is faithfully localized
 - audit the current `ros-slam-mapper` runtime against `ros-amr-navigation/amr_slam_mapper` `humble/develop/0.14.4`
