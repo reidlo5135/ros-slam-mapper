@@ -25,8 +25,7 @@ SlamPGraphServer::SlamPGraphServer(const rclcpp::NodeOptions &options)
   mapping_pose_topic_("/slam/mapper/pose"),
   graph_debug_topic_("/slam/mapper/graph_debug"),
   publish_period_ms_(250),
-  publish_map_to_odom_tf_(true),
-  update_map_to_odom_from_frontend_(false)
+  publish_map_to_odom_tf_(true)
 {
   this->declare_parameter("frames.map", this->frame_id_);
   this->declare_parameter("frames.odom", this->odom_frame_);
@@ -42,9 +41,6 @@ SlamPGraphServer::SlamPGraphServer(const rclcpp::NodeOptions &options)
   this->declare_parameter("topics.graph_debug", this->graph_debug_topic_);
   this->declare_parameter("publish_period_ms", this->publish_period_ms_);
   this->declare_parameter("mapping.publish_map_to_odom_tf", this->publish_map_to_odom_tf_);
-  this->declare_parameter(
-    "mapping.update_map_to_odom_from_frontend",
-    this->update_map_to_odom_from_frontend_);
   this->scan_matcher_.declare_parameters(*this);
   this->pose_graph_server_.declare_parameters(*this);
   this->submap_server_.declare_parameters(*this);
@@ -67,9 +63,6 @@ SlamPGraphServer::CallbackReturn SlamPGraphServer::on_configure(const rclcpp_lif
   this->get_parameter("topics.graph_debug", this->graph_debug_topic_);
   this->get_parameter("publish_period_ms", this->publish_period_ms_);
   this->get_parameter("mapping.publish_map_to_odom_tf", this->publish_map_to_odom_tf_);
-  this->get_parameter(
-    "mapping.update_map_to_odom_from_frontend",
-    this->update_map_to_odom_from_frontend_);
 
   this->scan_matcher_.load_parameters(*this);
   this->pose_graph_server_.load_parameters(*this);
@@ -167,9 +160,8 @@ SlamPGraphServer::CallbackReturn SlamPGraphServer::on_configure(const rclcpp_lif
     this->graph_debug_topic_.c_str());
   RCLCPP_INFO(
     this->get_logger(),
-    "TF policy publish_map_to_odom_tf=%s, update_map_to_odom_from_frontend=%s, publish_period_ms=%d",
+    "TF policy publish_map_to_odom_tf=%s, publish_period_ms=%d",
     this->publish_map_to_odom_tf_ ? "true" : "false",
-    this->update_map_to_odom_from_frontend_ ? "true" : "false",
     this->publish_period_ms_);
   RCLCPP_INFO(
     this->get_logger(),
@@ -468,14 +460,7 @@ void SlamPGraphServer::handle_scan(const sensor_msgs::msg::LaserScan::SharedPtr 
 
   this->current_corrected_pose_ = corrected_pose;
   this->has_current_corrected_pose_ = true;
-  if (this->update_map_to_odom_from_frontend_) {
-    this->update_map_to_odom_transform(corrected_pose, raw_odom_pose);
-    RCLCPP_INFO_THROTTLE(
-      this->get_logger(),
-      *this->get_clock(),
-      2000,
-      "Front-end updated map->odom TF from corrected pose");
-  }
+  this->update_map_to_odom_transform(corrected_pose, raw_odom_pose);
   this->submap_server_.integrate_scan(*message, corrected_pose);
 
   const nav_msgs::msg::OccupancyGrid graph_map = this->submap_server_.raw_map();

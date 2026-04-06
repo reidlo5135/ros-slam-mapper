@@ -25,7 +25,9 @@ PoseGraphServer::PoseGraphServer()
   graph_optimization_step_size_(0.35),
   graph_pose_prior_translation_weight_(0.18),
   graph_pose_prior_yaw_weight_(0.08),
-  descriptor_beams_(32)
+  descriptor_beams_(32),
+  mapping_min_range_(0.05),
+  mapping_max_range_(8.0)
 {
 }
 
@@ -117,6 +119,8 @@ void PoseGraphServer::load_parameters(rclcpp_lifecycle::LifecycleNode &node)
     "pose_graph.graph_pose_prior_yaw_weight",
     this->graph_pose_prior_yaw_weight_);
   node.get_parameter("pose_graph.descriptor_beams", this->descriptor_beams_);
+  node.get_parameter("mapping.range.min", this->mapping_min_range_);
+  node.get_parameter("mapping.range.max", this->mapping_max_range_);
 }
 
 void PoseGraphServer::reset()
@@ -239,7 +243,8 @@ std::vector<float> PoseGraphServer::build_scan_descriptor(const sensor_msgs::msg
     return descriptor;
   }
 
-  const double max_range = static_cast<double>(scan.range_max);
+  const double max_range =
+    std::min(this->mapping_max_range_, static_cast<double>(scan.range_max));
   for (int descriptor_index = 0; descriptor_index < beam_count; ++descriptor_index) {
     const std::size_t source_index = static_cast<std::size_t>(
       std::floor(
@@ -251,7 +256,10 @@ std::vector<float> PoseGraphServer::build_scan_descriptor(const sensor_msgs::msg
     if (!std::isfinite(range)) {
       range = max_range;
     }
-    range = std::clamp(range, static_cast<double>(scan.range_min), std::max(0.01, max_range));
+    range = std::clamp(
+      range,
+      std::max(this->mapping_min_range_, static_cast<double>(scan.range_min)),
+      std::max(0.01, max_range));
     descriptor[static_cast<std::size_t>(descriptor_index)] =
       static_cast<float>(range / std::max(0.01, max_range));
   }

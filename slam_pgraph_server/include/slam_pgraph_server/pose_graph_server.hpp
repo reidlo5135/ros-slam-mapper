@@ -94,6 +94,8 @@ private:
   double graph_pose_prior_translation_weight_;
   double graph_pose_prior_yaw_weight_;
   int descriptor_beams_;
+  double mapping_min_range_;
+  double mapping_max_range_;
 
   std::vector<float> build_scan_descriptor(const sensor_msgs::msg::LaserScan &scan) const;
   double compute_descriptor_distance(
