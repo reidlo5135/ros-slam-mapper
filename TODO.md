@@ -78,6 +78,17 @@ This project is building toward a standalone SLAM mapping line with:
 
 - front-end is the next major development target
 - move toward a more Karto-like local matching mindset before larger back-end surgery
+- `karto` here means a practical 2D lidar SLAM front-end style:
+  - start from odom / limited IMU prior
+  - search around the predicted pose
+  - score the scan against an occupancy-backed local map
+  - accept only conservative pose corrections before sending results to the pose graph
+- in this roadmap, `karto-family` does not mean copying one package blindly
+  - it means adopting the stronger front-end ideas:
+  - coarse-to-fine local search
+  - conservative correction policy
+  - better scan-to-map scoring
+  - better local matching stability before loop closure
 - preserve the good lessons from `amr_slam_mapper`
   - limited IMU heading usage
   - conservative local correction caps
@@ -95,6 +106,52 @@ This project is building toward a standalone SLAM mapping line with:
   - front-end becomes harder to reason about
   - straight-line quality regresses
   - loop quality only looks better because false constraints were accepted
+
+#### Karto-Family Mapping Sequence
+
+```mermaid
+sequenceDiagram
+    participant L as LaserScan
+    participant O as Odom/IMU Prior
+    participant FE as Front-End Matcher
+    participant LM as Local Occupancy Map
+    participant PG as Pose Graph
+    participant RB as Map Rebuild
+    participant TF as map->odom TF
+
+    L->>O: new scan arrives with latest odom / imu
+    O-->>FE: predicted pose
+    FE->>LM: score predicted pose on local map
+    FE->>LM: coarse search around predicted pose
+    LM-->>FE: best coarse candidate
+    FE->>LM: fine search around coarse candidate
+    LM-->>FE: refined local best pose
+    FE-->>FE: apply correction limits and acceptance rules
+    FE-->>PG: corrected pose + scan for keyframe / edge update
+    PG-->>PG: add odom edge, check loop candidates, optimize if accepted
+    PG->>RB: rebuild occupancy map from optimized poses and scans
+    RB-->>TF: publish updated map and map->odom transform
+```
+
+#### What PH-1 Matcher Observation Means
+
+- `PH-1` is not a new algorithm by itself
+- it makes the matcher explainable
+- for each scan-matching cycle we now expose:
+  - `predicted_score`
+  - `coarse_score`
+  - `fine_score`
+  - `final_score`
+  - `score_improvement`
+  - `valid_beams`
+  - `occupied_cell_count`
+  - `correction magnitude`
+  - `reject_reason`
+- this tells us whether:
+  - the matcher found a better pose than the prior
+  - coarse search helped or did nothing
+  - fine search improved alignment or just confirmed the same pose
+  - a correction was correctly rejected because it was weak or unsafe
 
 ### 3A. Phase 1: Matcher Observability
 
