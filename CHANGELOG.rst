@@ -1,6 +1,16 @@
 Changelog
 =========
 
+2026-04-06
+----------
+
+- Started the ``0.2.1`` follow-up branch:
+
+  - formalized the karto-family front-end observability and coarse-to-fine search phases in ``TODO.md``
+  - added detailed scan matcher diagnostics for predicted, coarse, fine, and final scores
+  - exposed valid beam counts, occupied cell counts, correction magnitude, and reject reasons from scan matching
+  - published throttled front-end matcher diagnostics from ``slam_pgraph_server`` for replayable tuning
+
 2026-04-02
 ----------
 

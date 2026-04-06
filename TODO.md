@@ -96,6 +96,37 @@ This project is building toward a standalone SLAM mapping line with:
   - straight-line quality regresses
   - loop quality only looks better because false constraints were accepted
 
+### 3A. Phase 1: Matcher Observability
+
+- log and compare for each scan-matching cycle:
+  - predicted score
+  - coarse-stage best score
+  - fine-stage best score
+  - final score improvement
+  - occupied cell count used by the matcher
+  - valid beam count used by the matcher
+  - final correction magnitude
+  - reject reason when correction is not applied
+- pass criteria
+  - every accepted or rejected correction is explainable from logs
+  - runtime noise can be separated from algorithm failure
+
+### 3B. Phase 2: Coarse-To-Fine Search Policy
+
+- keep the current baseline map source unchanged
+- improve only the matcher search strategy
+- tune:
+  - coarse linear step multiplier
+  - coarse angular step multiplier
+  - fine window scale
+- compare:
+  - straight corridor jitter
+  - large-turn recovery
+  - pre-loop left-side drift
+- pass criteria
+  - straight corridor corrections become less jittery
+  - large-window brute-force behavior is replaced with more stable coarse/fine refinement
+
 ### 4. Loop Search And Acceptance
 
 - compare against stronger `slam_toolbox` ideas without copying blindly

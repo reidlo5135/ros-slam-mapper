@@ -453,8 +453,12 @@ void SlamPGraphServer::handle_scan(const sensor_msgs::msg::LaserScan::SharedPtr 
     this->scan_matcher_.build_raw_odom_pose(this->latest_odometry_, motion_prior_state);
   const Pose2D predicted_pose = this->apply_map_to_odom_transform(raw_odom_pose);
   const nav_msgs::msg::OccupancyGrid front_end_map = this->submap_server_.raw_map();
-  const Pose2D corrected_pose =
-    this->scan_matcher_.refine_pose_with_scan_matching(front_end_map, *message, predicted_pose);
+  const slam::scan::matcher::ScanMatchResult scan_match_result =
+    this->scan_matcher_.refine_pose_with_scan_matching_detailed(
+    front_end_map,
+    *message,
+    predicted_pose);
+  const Pose2D corrected_pose = scan_match_result.pose;
   const Pose2D front_end_delta =
     this->scan_matcher_.relative_pose(predicted_pose, corrected_pose);
 
@@ -491,6 +495,24 @@ void SlamPGraphServer::handle_scan(const sensor_msgs::msg::LaserScan::SharedPtr 
     front_end_delta.y,
     front_end_delta.yaw * kRadToDeg,
     this->pose_graph_server_.graph_nodes().size());
+  RCLCPP_INFO_THROTTLE(
+    this->get_logger(),
+    *this->get_clock(),
+    2000,
+    "Scan matcher diag occupied_cells=%d predicted_score=%.3f coarse_score=%.3f fine_score=%.3f final_score=%.3f improvement=%.3f valid_beams(pred/coarse/fine)=%d/%d/%d applied=%s reject_reason=%s correction=(%.3f m, %.3f deg)",
+    scan_match_result.debug.occupied_cell_count,
+    scan_match_result.debug.predicted_score,
+    scan_match_result.debug.coarse_score,
+    scan_match_result.debug.fine_score,
+    scan_match_result.debug.final_score,
+    scan_match_result.debug.score_improvement,
+    scan_match_result.debug.predicted_valid_beam_count,
+    scan_match_result.debug.coarse_valid_beam_count,
+    scan_match_result.debug.fine_valid_beam_count,
+    scan_match_result.debug.correction_applied ? "true" : "false",
+    this->scan_matcher_.scan_match_reject_reason_to_cstr(scan_match_result.debug.reject_reason),
+    scan_match_result.debug.correction_translation,
+    scan_match_result.debug.correction_yaw_deg);
 
   if (graph_update.node_added) {
     RCLCPP_INFO(

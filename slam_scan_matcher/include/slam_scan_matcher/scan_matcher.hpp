@@ -33,13 +33,53 @@ struct MotionPriorState
   bool has_start_imu_yaw{false};
 };
 
+enum class ScanMatchRejectReason
+{
+  none = 0,
+  insufficient_map,
+  non_finite_score,
+  insufficient_score_improvement,
+  translation_limit,
+  yaw_limit
+};
+
+struct ScanMatchDebugInfo
+{
+  int occupied_cell_count{0};
+  int predicted_valid_beam_count{0};
+  int coarse_valid_beam_count{0};
+  int fine_valid_beam_count{0};
+  double predicted_score{-std::numeric_limits<double>::infinity()};
+  double coarse_score{-std::numeric_limits<double>::infinity()};
+  double fine_score{-std::numeric_limits<double>::infinity()};
+  double final_score{-std::numeric_limits<double>::infinity()};
+  double score_improvement{0.0};
+  double correction_translation{0.0};
+  double correction_yaw_deg{0.0};
+  bool correction_applied{false};
+  ScanMatchRejectReason reject_reason{ScanMatchRejectReason::none};
+};
+
+struct ScanMatchResult
+{
+  Pose2D pose{};
+  ScanMatchDebugInfo debug{};
+};
+
 class ScanMatcher
 {
 private:
+  struct CandidateScore
+  {
+    double score{-std::numeric_limits<double>::infinity()};
+    int valid_beam_count{0};
+  };
+
   struct CandidateSearchResult
   {
     Pose2D pose{};
     double score{-std::numeric_limits<double>::infinity()};
+    int valid_beam_count{0};
   };
 
   bool use_imu_heading_;
@@ -93,6 +133,10 @@ private:
     int grid_x,
     int grid_y,
     std::size_t &index) const;
+  CandidateScore evaluate_candidate_score(
+    const nav_msgs::msg::OccupancyGrid &map,
+    const sensor_msgs::msg::LaserScan &scan,
+    const Pose2D &candidate_pose) const;
   CandidateSearchResult search_best_pose_in_window(
     const nav_msgs::msg::OccupancyGrid &map,
     const sensor_msgs::msg::LaserScan &scan,
@@ -115,6 +159,10 @@ public:
   Pose2D build_raw_odom_pose(
     const nav_msgs::msg::Odometry &odometry,
     const MotionPriorState &motion_prior_state) const;
+  ScanMatchResult refine_pose_with_scan_matching_detailed(
+    const nav_msgs::msg::OccupancyGrid &map,
+    const sensor_msgs::msg::LaserScan &scan,
+    const Pose2D &predicted_pose) const;
   Pose2D refine_pose_with_scan_matching(
     const nav_msgs::msg::OccupancyGrid &map,
     const sensor_msgs::msg::LaserScan &scan,
@@ -130,6 +178,7 @@ public:
   void set_quaternion_from_yaw(geometry_msgs::msg::Quaternion &orientation, double yaw) const;
   double quaternion_to_yaw(const geometry_msgs::msg::Quaternion &orientation) const;
   double normalize_angle(double angle) const;
+  const char *scan_match_reject_reason_to_cstr(ScanMatchRejectReason reason) const;
 };
 
 }  // namespace slam::scan::matcher

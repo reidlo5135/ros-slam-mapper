@@ -189,12 +189,14 @@ Pose2D ScanMatcher::build_raw_odom_pose(
   return pose;
 }
 
-Pose2D ScanMatcher::refine_pose_with_scan_matching(
+ScanMatchResult ScanMatcher::refine_pose_with_scan_matching_detailed(
   const nav_msgs::msg::OccupancyGrid &map,
   const sensor_msgs::msg::LaserScan &scan,
   const Pose2D &predicted_pose) const
 {
   constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
+  ScanMatchResult result{};
+  result.pose = predicted_pose;
 
   int occupied_cell_count = 0;
   for (const auto cell : map.data) {
@@ -202,8 +204,10 @@ Pose2D ScanMatcher::refine_pose_with_scan_matching(
       ++occupied_cell_count;
     }
   }
+  result.debug.occupied_cell_count = occupied_cell_count;
   if (occupied_cell_count < this->scan_matching_minimum_occupied_cells_) {
-    return predicted_pose;
+    result.debug.reject_reason = ScanMatchRejectReason::insufficient_map;
+    return result;
   }
 
   const double linear_window = std::max(0.0, this->scan_matching_linear_window_);
@@ -234,7 +238,11 @@ Pose2D ScanMatcher::refine_pose_with_scan_matching(
     angular_step_rad,
     angular_window_rad * fine_window_scale);
 
-  const double predicted_score = this->score_scan_candidate(map, scan, predicted_pose);
+  const CandidateScore predicted_candidate =
+    this->evaluate_candidate_score(map, scan, predicted_pose);
+  const double predicted_score = predicted_candidate.score;
+  result.debug.predicted_score = predicted_score;
+  result.debug.predicted_valid_beam_count = predicted_candidate.valid_beam_count;
   CandidateSearchResult coarse_result = this->search_best_pose_in_window(
     map,
     scan,
@@ -255,15 +263,23 @@ Pose2D ScanMatcher::refine_pose_with_scan_matching(
     angular_step_rad,
     translation_regularization_weight,
     yaw_regularization_weight);
+  result.debug.coarse_score = coarse_result.score;
+  result.debug.coarse_valid_beam_count = coarse_result.valid_beam_count;
+  result.debug.fine_score = fine_result.score;
+  result.debug.fine_valid_beam_count = fine_result.valid_beam_count;
 
   Pose2D best_pose = fine_result.pose;
   double best_score = fine_result.score;
+  result.debug.final_score = best_score;
 
   const double correction_x = best_pose.x - predicted_pose.x;
   const double correction_y = best_pose.y - predicted_pose.y;
   const double correction_translation = std::hypot(correction_x, correction_y);
   const double correction_yaw =
     std::abs(this->normalize_angle(best_pose.yaw - predicted_pose.yaw));
+  result.debug.score_improvement = best_score - predicted_score;
+  result.debug.correction_translation = correction_translation;
+  result.debug.correction_yaw_deg = correction_yaw / kDegToRad;
 
   if (
     !std::isfinite(best_score) ||
@@ -271,10 +287,31 @@ Pose2D ScanMatcher::refine_pose_with_scan_matching(
     correction_translation > max_translation_correction ||
     correction_yaw > max_yaw_correction_rad)
   {
-    return predicted_pose;
+    if (!std::isfinite(best_score)) {
+      result.debug.reject_reason = ScanMatchRejectReason::non_finite_score;
+    } else if ((best_score - predicted_score) < min_score_improvement) {
+      result.debug.reject_reason = ScanMatchRejectReason::insufficient_score_improvement;
+    } else if (correction_translation > max_translation_correction) {
+      result.debug.reject_reason = ScanMatchRejectReason::translation_limit;
+    } else if (correction_yaw > max_yaw_correction_rad) {
+      result.debug.reject_reason = ScanMatchRejectReason::yaw_limit;
+    }
+    return result;
   }
 
-  return best_pose;
+  result.pose = best_pose;
+  result.debug.correction_applied = true;
+  return result;
+}
+
+Pose2D ScanMatcher::refine_pose_with_scan_matching(
+  const nav_msgs::msg::OccupancyGrid &map,
+  const sensor_msgs::msg::LaserScan &scan,
+  const Pose2D &predicted_pose) const
+{
+  const ScanMatchResult result =
+    this->refine_pose_with_scan_matching_detailed(map, scan, predicted_pose);
+  return result.pose;
 }
 
 ScanMatcher::CandidateSearchResult ScanMatcher::search_best_pose_in_window(
@@ -292,7 +329,10 @@ ScanMatcher::CandidateSearchResult ScanMatcher::search_best_pose_in_window(
 
   CandidateSearchResult result{};
   result.pose = center_pose;
-  result.score = this->score_scan_candidate(map, scan, center_pose);
+  const CandidateScore center_candidate =
+    this->evaluate_candidate_score(map, scan, center_pose);
+  result.score = center_candidate.score;
+  result.valid_beam_count = center_candidate.valid_beam_count;
 
   const double safe_linear_window = std::max(0.0, linear_window);
   const double safe_linear_step = std::max(0.01, linear_step);
@@ -327,8 +367,9 @@ ScanMatcher::CandidateSearchResult ScanMatcher::search_best_pose_in_window(
         candidate_pose.y = center_pose.y + delta_y;
         candidate_pose.yaw = this->normalize_angle(center_pose.yaw + delta_yaw);
 
-        const double candidate_score = this->score_scan_candidate(map, scan, candidate_pose);
-        if (!std::isfinite(candidate_score)) {
+        const CandidateScore candidate =
+          this->evaluate_candidate_score(map, scan, candidate_pose);
+        if (!std::isfinite(candidate.score)) {
           continue;
         }
 
@@ -338,12 +379,13 @@ ScanMatcher::CandidateSearchResult ScanMatcher::search_best_pose_in_window(
         const double correction_yaw_deg =
           std::abs(this->normalize_angle(candidate_pose.yaw - center_pose.yaw)) / kDegToRad;
         const double regularized_score =
-          candidate_score -
+          candidate.score -
           (translation_regularization_weight * correction_translation) -
           (yaw_regularization_weight * correction_yaw_deg);
         if (regularized_score > result.score) {
           result.score = regularized_score;
           result.pose = candidate_pose;
+          result.valid_beam_count = candidate.valid_beam_count;
         }
       }
     }
@@ -352,19 +394,19 @@ ScanMatcher::CandidateSearchResult ScanMatcher::search_best_pose_in_window(
   return result;
 }
 
-double ScanMatcher::score_scan_candidate(
+ScanMatcher::CandidateScore ScanMatcher::evaluate_candidate_score(
   const nav_msgs::msg::OccupancyGrid &map,
   const sensor_msgs::msg::LaserScan &scan,
   const Pose2D &candidate_pose) const
 {
+  CandidateScore result{};
   if (scan.ranges.empty()) {
-    return -std::numeric_limits<double>::infinity();
+    return result;
   }
 
   const int beam_stride = std::max(
     1,
     static_cast<int>(scan.ranges.size()) / std::max(1, this->scan_matching_max_beams_));
-  int valid_beam_count = 0;
   double score = 0.0;
 
   for (std::size_t index = 0; index < scan.ranges.size(); index += static_cast<std::size_t>(beam_stride)) {
@@ -393,7 +435,7 @@ double ScanMatcher::score_scan_candidate(
       continue;
     }
 
-    ++valid_beam_count;
+    ++result.valid_beam_count;
     const int8_t cell_value = map.data[cell_index];
     if (cell_value >= 50) {
       score += this->scan_matching_occupied_match_score_;
@@ -428,11 +470,22 @@ double ScanMatcher::score_scan_candidate(
     }
   }
 
-  if (valid_beam_count < this->scan_matching_min_valid_beams_) {
-    return -std::numeric_limits<double>::infinity();
+  if (result.valid_beam_count < this->scan_matching_min_valid_beams_) {
+    result.score = -std::numeric_limits<double>::infinity();
+    return result;
   }
 
-  return score;
+  result.score = score;
+  return result;
+}
+
+double ScanMatcher::score_scan_candidate(
+  const nav_msgs::msg::OccupancyGrid &map,
+  const sensor_msgs::msg::LaserScan &scan,
+  const Pose2D &candidate_pose) const
+{
+  const CandidateScore result = this->evaluate_candidate_score(map, scan, candidate_pose);
+  return result.score;
 }
 
 double ScanMatcher::nearest_occupied_distance_cells(
@@ -576,6 +629,26 @@ double ScanMatcher::normalize_angle(double angle) const
     angle += 2.0 * kPi;
   }
   return angle;
+}
+
+const char *ScanMatcher::scan_match_reject_reason_to_cstr(ScanMatchRejectReason reason) const
+{
+  switch (reason) {
+    case ScanMatchRejectReason::none:
+      return "none";
+    case ScanMatchRejectReason::insufficient_map:
+      return "insufficient_map";
+    case ScanMatchRejectReason::non_finite_score:
+      return "non_finite_score";
+    case ScanMatchRejectReason::insufficient_score_improvement:
+      return "insufficient_score_improvement";
+    case ScanMatchRejectReason::translation_limit:
+      return "translation_limit";
+    case ScanMatchRejectReason::yaw_limit:
+      return "yaw_limit";
+    default:
+      return "unknown";
+  }
 }
 
 }  // namespace slam::scan::matcher
