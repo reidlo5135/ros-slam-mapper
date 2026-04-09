@@ -6,22 +6,25 @@ timeline
     0.1.x : `0.14.4` baseline recovery
           : package split and `/slam/*` localization
           : regression-safe standalone bootstrap
-    0.2.x : observability and replay discipline
-          : loop / TF / rebuild diagnostics
+    0.2.x : `0.2.1` pose baseline reset
+          : observability and replay discipline
           : repeatable regression runs
-    0.3.x : karto-family front-end uplift
+    0.3.x : map representation / rendering reset
+          : posed-scan integration quality
+          : rebuild-safe global map generation
+    0.4.x : karto-family front-end uplift
           : local scan matching quality
           : wide-area drift containment
-    0.4.x : loop acceptance hardening
+    0.5.x : loop acceptance hardening
           : candidate filtering and rescoring
           : false-positive resistant closure policy
-    0.5.x : pose-graph optimizer upgrade
+    0.6.x : pose-graph optimizer upgrade
           : anchor strategy and solver quality
           : loop correction stability
-    0.6.x : real submap architecture
+    0.7.x : real submap architecture
           : active local submap matching
           : submap-level rebuild and composition
-    0.7.x : mapping productization
+    0.8.x : mapping productization
           : serialization / continued mapping
           : localization and ops surface
 ```
@@ -74,7 +77,45 @@ This project is building toward a standalone SLAM mapping line with:
   - rebuild-driven pixel loss
   - wide-area drift accumulation
 
-### 3. Karto-Family Front-End
+### 3. `0.2.1` Pose Baseline Reset
+
+- treat `humble/develop/0.2.1` as the current localization / pose-estimation baseline
+- current observation:
+  - pose estimation looks visually and operationally strong
+  - map rendering quality is still much worse than `slam_toolbox`
+  - therefore the next refactor target is not pose estimation first, but map integration / map rendering
+- discard `0.2.2` as a performance reference for SLAM quality
+- only keep `0.2.2` launch convenience changes if they are operationally useful
+- pass criteria
+  - all future comparisons start from the `0.2.1` pose behavior
+  - map-quality work does not degrade the existing pose baseline
+
+### 4. Map Representation / Rendering Reset
+
+- compare the current pipeline against `slam_toolbox` concepts
+  - `slam_toolbox` keeps posed scans in the pose graph and constructs the published map from those posed scans
+  - `slam_toolbox` also exposes mapping/localization modes, rolling scan buffers, and pose-graph-backed map publication
+- current local issue:
+  - we mutate one temporary occupancy grid immediately as scans arrive
+  - we raytrace free cells and stamp endpoint hits directly into that grid
+  - we later rebuild by reintegrating graph-node scans, but the representation is still too point-wise and destructive
+- refactor targets
+  - separate `pose quality` from `map drawing quality`
+  - stop treating the always-mutating temp grid as the only source of truth
+  - move toward a `posed scan set -> rendered map` mindset
+  - keep a working buffer separate from a graph-backed rendered map
+  - make rebuild quality measurable instead of just visually judged
+- likely first changes
+  - audit whether every incoming scan should be committed immediately to the global map
+  - add a render-oriented map path that prioritizes stable wall lines over aggressive free-space carving
+  - re-check endpoint hit logic, free-cell raytrace balance, and refinement side effects
+  - compare raw map, refined map, and rebuild map retention on the same route
+- pass criteria
+  - straight lines render as stable global structures, not just locally plausible traces
+  - map quality improves without needing worse pose correction
+  - loop rebuild keeps more wall continuity and fewer wipeout artifacts
+
+### 5. Karto-Family Front-End
 
 - front-end is the next major development target
 - move toward a more Karto-like local matching mindset before larger back-end surgery
@@ -153,7 +194,7 @@ sequenceDiagram
   - fine search improved alignment or just confirmed the same pose
   - a correction was correctly rejected because it was weak or unsafe
 
-### 3A. Phase 1: Matcher Observability
+### 5A. Phase 1: Matcher Observability
 
 - log and compare for each scan-matching cycle:
   - predicted score
@@ -168,7 +209,7 @@ sequenceDiagram
   - every accepted or rejected correction is explainable from logs
   - runtime noise can be separated from algorithm failure
 
-### 3B. Phase 2: Coarse-To-Fine Search Policy
+### 5B. Phase 2: Coarse-To-Fine Search Policy
 
 - keep the current baseline map source unchanged
 - improve only the matcher search strategy
@@ -184,7 +225,19 @@ sequenceDiagram
   - straight corridor corrections become less jittery
   - large-window brute-force behavior is replaced with more stable coarse/fine refinement
 
-### 4. Loop Search And Acceptance
+### 5C. Phase 3: Score Model Work
+
+- this phase is now explicitly blocked behind the `0.2.1` baseline reset and map-rendering review
+- do not reopen score-model experiments until:
+  - the pose baseline is frozen
+  - map drawing quality issues are separated from pose issues
+  - a score-model change can be evaluated without confusing it with rendering regressions
+- when reopened, score-model work should focus on:
+  - candidate separation quality
+  - exact-hit vs proximity balance
+  - confidence / rejectability, not aggressive early correction
+
+### 6. Loop Search And Acceptance
 
 - compare against stronger `slam_toolbox` ideas without copying blindly
 - improve:
@@ -199,7 +252,7 @@ sequenceDiagram
   - early but weak loop acceptance
   - prettier maps caused by unsafe loop constraints
 
-### 5. Pose-Graph Optimizer Upgrade
+### 7. Pose-Graph Optimizer Upgrade
 
 - keep a pose-graph optimizer mindset
   - keyframes
@@ -222,7 +275,7 @@ sequenceDiagram
   - optimizer tears or over-rotates the map
   - map quality drops after every accepted loop
 
-### 6. Real Submap Architecture
+### 8. Real Submap Architecture
 
 - use submaps as the structural answer to wide-area drift and rebuild quality, not as an early escape hatch
 - move here after front-end and optimizer observability are good enough
@@ -235,7 +288,7 @@ sequenceDiagram
   - wider excursions keep local consistency better
   - loop corrections no longer require heavy full-map redraw side effects
 
-### 7. Mapping Productization
+### 9. Mapping Productization
 
 - follow selected `slam_toolbox` strengths over time
   - serialization / deserialization
@@ -247,12 +300,14 @@ sequenceDiagram
 ## Development Order
 
 1. keep the current `0.14.4` baseline stable and measurable
-2. improve observability until loop / rebuild failures are fully explainable
-3. upgrade the front-end toward a Karto-family local matcher
-4. harden loop candidate search and acceptance policy
-5. improve the pose-graph optimizer only after front-end quality is clearer
-6. introduce real submap architecture when the single-map limits are proven in data
-7. add product-level capabilities after the core mapping path is trustworthy
+2. freeze `0.2.1` as the pose-estimation baseline
+3. improve observability until pose / render / rebuild failures are separately explainable
+4. refactor map representation and rendering toward a posed-scan / graph-backed model
+5. resume front-end upgrades only after map-quality regressions are isolated
+6. harden loop candidate search and acceptance policy
+7. improve the pose-graph optimizer only after front-end and render quality are clearer
+8. introduce real submap architecture when the single-map limits are proven in data
+9. add product-level capabilities after the core mapping path is trustworthy
 
 ## Experiment Rules
 
@@ -271,6 +326,21 @@ sequenceDiagram
   - pixel retention after loop-triggered rebuild
 
 ## Daily Plan
+
+### 2026-04-09
+
+- freeze `0.2.1` as the SLAM pose / localization baseline
+- treat `0.2.2` as discarded for SLAM quality comparison
+- reframe the next version around map rendering quality, not pose tuning
+- compare the current architecture against `slam_toolbox` and extract the actionable deltas
+  - `slam_toolbox` publishes a map built from posed scans in the pose graph
+  - `slam_toolbox` distinguishes mapping / localization behavior with buffered scans
+  - `slam_toolbox` exposes graph-backed map publication rather than only mutating one temporary grid in-place
+- first refactor targets for the next version
+  - separate a graph-backed render path from the always-mutating temp map path
+  - audit free-space raytrace aggressiveness versus endpoint hit accumulation
+  - measure raw/refined/rebuild map retention on the same route
+  - prioritize stable global wall rendering over “integrate everything immediately”
 
 ### 2026-04-08
 

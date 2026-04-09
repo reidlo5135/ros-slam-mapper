@@ -4,11 +4,12 @@ Changelog
 2026-04-09
 ----------
 
-- Started the ``0.2.2`` follow-up branch:
+- Started the ``0.2.3`` follow-up branch:
 
-  - added an optional ``robot_bringup`` launch argument to ``slam_bringup/launch/slam.launch.py``
-  - included ``turtlebot3_bringup/launch/robot.launch.py`` before SLAM node startup when ``robot_bringup:=true``
-  - documented the split between standalone SLAM bringup and external robot bringup in ``README.md``
+  - reset the roadmap around ``0.2.1`` as the active pose-estimation baseline
+  - discarded ``0.2.2`` as a SLAM-quality reference line
+  - moved the next major refactor focus from score-model tuning to map representation / rendering quality
+  - rechecked the phase order against `slam_toolbox` concepts such as posed-scan-backed map publication and buffered scan handling
 
 2026-04-06
 ----------
