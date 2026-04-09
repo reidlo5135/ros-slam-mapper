@@ -11,6 +11,7 @@ namespace
 {
 
 constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
+constexpr double kReasonableMaskAbsDeg = 360.0;
 
 }  // namespace
 
@@ -27,7 +28,9 @@ SlamLaserFilter::SlamLaserFilter(const rclcpp::NodeOptions &options)
   this->declare_parameter("filters.reject_near_max_range", this->reject_near_max_range_);
   this->declare_parameter("filters.max_range_margin", this->max_range_margin_);
   this->declare_parameter("filters.replace_with_infinity", this->replace_with_infinity_);
-  this->declare_parameter("filters.masked_angle_ranges_deg", this->masked_angle_ranges_deg_);
+  this->declare_parameter(
+    "filters.masked_angle_ranges_deg",
+    std::vector<double>{9999.0, 9999.0});
 
   this->load_parameters();
 
@@ -71,6 +74,15 @@ void SlamLaserFilter::rebuild_angle_masks()
   const std::size_t pair_count = this->masked_angle_ranges_deg_.size() / 2U;
   this->masked_angle_ranges_rad_.reserve(pair_count);
   for (std::size_t index = 0; index + 1U < this->masked_angle_ranges_deg_.size(); index += 2U) {
+    if (
+      !std::isfinite(this->masked_angle_ranges_deg_[index]) ||
+      !std::isfinite(this->masked_angle_ranges_deg_[index + 1U]) ||
+      std::abs(this->masked_angle_ranges_deg_[index]) > kReasonableMaskAbsDeg ||
+      std::abs(this->masked_angle_ranges_deg_[index + 1U]) > kReasonableMaskAbsDeg)
+    {
+      continue;
+    }
+
     double start_rad = this->masked_angle_ranges_deg_[index] * kDegToRad;
     double end_rad = this->masked_angle_ranges_deg_[index + 1U] * kDegToRad;
     if (start_rad > end_rad) {
