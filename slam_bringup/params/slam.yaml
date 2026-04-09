@@ -23,7 +23,7 @@
     mapping:
       range:
         min: 0.05
-        max: 12.0
+        max: 8.0
     scan_matching:
       linear_window: 0.15
       linear_step: 0.05
@@ -61,7 +61,7 @@
         yaw: 0.0
       range:
         min: 0.05
-        max: 12.0
+        max: 8.0
     occupancy:
       hit_score: 20
       free_score: 3
@@ -101,7 +101,7 @@
         yaw: 0.0
       range:
         min: 0.05
-        max: 12.0
+        max: 8.0
       publish_map_to_odom_tf: true
     motion_prior:
       use_imu_heading: false
