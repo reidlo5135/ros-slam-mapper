@@ -20,7 +20,8 @@ SubmapServer::SubmapServer()
   mapping_score_min_(-20),
   mapping_score_max_(100),
   refinement_min_occupied_neighbor_count_(2),
-  refinement_min_free_neighbor_count_(4)
+  refinement_min_free_neighbor_count_(4),
+  refinement_bridge_one_cell_gaps_(true)
 {
 }
 
@@ -44,6 +45,8 @@ void SubmapServer::declare_parameters(rclcpp_lifecycle::LifecycleNode &node) con
     "refinement.min_occupied_neighbor_count", this->refinement_min_occupied_neighbor_count_);
   node.declare_parameter(
     "refinement.min_free_neighbor_count", this->refinement_min_free_neighbor_count_);
+  node.declare_parameter(
+    "refinement.bridge_one_cell_gaps", this->refinement_bridge_one_cell_gaps_);
 }
 
 void SubmapServer::load_parameters(rclcpp_lifecycle::LifecycleNode &node)
@@ -68,6 +71,8 @@ void SubmapServer::load_parameters(rclcpp_lifecycle::LifecycleNode &node)
     "refinement.min_occupied_neighbor_count", this->refinement_min_occupied_neighbor_count_);
   node.get_parameter(
     "refinement.min_free_neighbor_count", this->refinement_min_free_neighbor_count_);
+  node.get_parameter(
+    "refinement.bridge_one_cell_gaps", this->refinement_bridge_one_cell_gaps_);
 }
 
 void SubmapServer::reset(const std::string &frame_id, const rclcpp::Time &stamp)
@@ -225,7 +230,73 @@ nav_msgs::msg::OccupancyGrid SubmapServer::build_refined_map(
     }
   }
 
+  if (this->refinement_bridge_one_cell_gaps_) {
+    this->bridge_line_gaps(refined_map);
+  }
+
   return refined_map;
+}
+
+void SubmapServer::bridge_line_gaps(nav_msgs::msg::OccupancyGrid &map) const
+{
+  if (map.data.empty()) {
+    return;
+  }
+
+  nav_msgs::msg::OccupancyGrid source_map = map;
+  const int width = static_cast<int>(source_map.info.width);
+  const int height = static_cast<int>(source_map.info.height);
+
+  for (int grid_y = 1; grid_y < height - 1; ++grid_y) {
+    for (int grid_x = 1; grid_x < width - 1; ++grid_x) {
+      std::size_t index = 0U;
+      if (!this->grid_index(source_map, grid_x, grid_y, index) || index >= source_map.data.size()) {
+        continue;
+      }
+
+      if (source_map.data[index] >= 50) {
+        continue;
+      }
+
+      std::size_t left_index = 0U;
+      std::size_t right_index = 0U;
+      std::size_t up_index = 0U;
+      std::size_t down_index = 0U;
+      std::size_t up_left_index = 0U;
+      std::size_t down_right_index = 0U;
+      std::size_t up_right_index = 0U;
+      std::size_t down_left_index = 0U;
+      if (
+        !this->grid_index(source_map, grid_x - 1, grid_y, left_index) ||
+        !this->grid_index(source_map, grid_x + 1, grid_y, right_index) ||
+        !this->grid_index(source_map, grid_x, grid_y - 1, up_index) ||
+        !this->grid_index(source_map, grid_x, grid_y + 1, down_index) ||
+        !this->grid_index(source_map, grid_x - 1, grid_y - 1, up_left_index) ||
+        !this->grid_index(source_map, grid_x + 1, grid_y + 1, down_right_index) ||
+        !this->grid_index(source_map, grid_x + 1, grid_y - 1, up_right_index) ||
+        !this->grid_index(source_map, grid_x - 1, grid_y + 1, down_left_index))
+      {
+        continue;
+      }
+
+      const bool bridge_horizontal =
+        source_map.data[left_index] >= 50 &&
+        source_map.data[right_index] >= 50;
+      const bool bridge_vertical =
+        source_map.data[up_index] >= 50 &&
+        source_map.data[down_index] >= 50;
+      const bool bridge_diag_down =
+        source_map.data[up_left_index] >= 50 &&
+        source_map.data[down_right_index] >= 50;
+      const bool bridge_diag_up =
+        source_map.data[up_right_index] >= 50 &&
+        source_map.data[down_left_index] >= 50;
+
+      if (bridge_horizontal || bridge_vertical || bridge_diag_down || bridge_diag_up) {
+        map.data[index] = 100;
+      }
+    }
+  }
 }
 
 int SubmapServer::count_neighboring_cells(

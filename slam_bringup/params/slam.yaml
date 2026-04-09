@@ -23,7 +23,7 @@
     mapping:
       range:
         min: 0.05
-        max: 8.0
+        max: 12.0
     scan_matching:
       linear_window: 0.15
       linear_step: 0.05
@@ -61,7 +61,7 @@
         yaw: 0.0
       range:
         min: 0.05
-        max: 8.0
+        max: 12.0
     occupancy:
       hit_score: 20
       free_score: 3
@@ -72,6 +72,7 @@
     refinement:
       min_occupied_neighbor_count: 2
       min_free_neighbor_count: 4
+      bridge_one_cell_gaps: true
 
 /slam/slam_pgraph_server:
   ros__parameters:
@@ -100,7 +101,7 @@
         yaw: 0.0
       range:
         min: 0.05
-        max: 8.0
+        max: 12.0
       publish_map_to_odom_tf: true
     motion_prior:
       use_imu_heading: false
@@ -139,6 +140,7 @@
     refinement:
       min_occupied_neighbor_count: 2
       min_free_neighbor_count: 4
+      bridge_one_cell_gaps: true
     pose_graph:
       keyframe_distance_threshold: 0.30
       keyframe_yaw_threshold: 0.30

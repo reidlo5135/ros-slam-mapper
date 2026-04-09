@@ -52,12 +52,14 @@ private:
   int mapping_score_max_;
   int refinement_min_occupied_neighbor_count_;
   int refinement_min_free_neighbor_count_;
+  bool refinement_bridge_one_cell_gaps_;
 
   nav_msgs::msg::OccupancyGrid create_empty_map(const rclcpp::Time &stamp) const;
   std::vector<int16_t> create_empty_scores() const;
   void initialize_mapping_map(const rclcpp::Time &stamp);
   nav_msgs::msg::OccupancyGrid build_refined_map(
     const nav_msgs::msg::OccupancyGrid &source_map) const;
+  void bridge_line_gaps(nav_msgs::msg::OccupancyGrid &map) const;
   int count_neighboring_cells(
     const nav_msgs::msg::OccupancyGrid &map,
     int grid_x,
