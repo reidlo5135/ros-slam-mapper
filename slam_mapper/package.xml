@@ -18,6 +18,7 @@
   <exec_depend>rclcpp_lifecycle</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>slam_bringup</exec_depend>
+  <exec_depend>slam_laser_filter</exec_depend>
   <exec_depend>slam_pgraph_server</exec_depend>
   <exec_depend>slam_scan_matcher</exec_depend>
   <exec_depend>slam_submap_server</exec_depend>

@@ -1,6 +1,16 @@
 Changelog
 =========
 
+2026-04-10
+----------
+
+- Started the ``0.3.0`` follow-up branch:
+
+  - kept ``0.2.1`` pose quality as the working baseline
+  - moved the next refactor focus to map quality and scan cleanliness
+  - introduced a dedicated ``slam_laser_filter`` package direction for pre-filtered scan input
+  - switched the SLAM runtime input contract toward ``/slam/mapper/scan/filtered``
+
 2026-04-09
 ----------
 

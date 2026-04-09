@@ -7,6 +7,7 @@ Current `0.1.0` direction:
 - use `/slam/*` topic names instead of the old `/amr/*`
 - split the migrated mapper into dedicated packages
   - `slam_scan_matcher`: scan-matcher utility package and node
+  - `slam_laser_filter`: scan pre-filter utility package and node
   - `slam_pgraph_server`: current runtime node and pose-graph back-end
   - `slam_submap_server`: temporary map accumulation utility package and node
   - `slam_mapper`: metapackage only
@@ -41,6 +42,7 @@ This means:
 The standalone SLAM line should use `/slam/*` names by default.
 
 Examples:
+- `/slam/mapper/scan/filtered`
 - `/slam/map/temp/raw`
 - `/slam/map/temp/refined`
 - `/slam/map/temp`
@@ -85,6 +87,7 @@ Out of scope for the first line:
 
 Current active packages:
 - `slam_bringup`
+- `slam_laser_filter`
 - `slam_mapper`
 - `slam_scan_matcher`
 - `slam_pgraph_server`

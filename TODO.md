@@ -10,6 +10,7 @@ timeline
           : observability and replay discipline
           : repeatable regression runs
     0.3.x : map representation / rendering reset
+          : scan pre-filter and line clustering
           : posed-scan integration quality
           : rebuild-safe global map generation
     0.4.x : karto-family front-end uplift
@@ -92,6 +93,10 @@ This project is building toward a standalone SLAM mapping line with:
 
 ### 4. Map Representation / Rendering Reset
 
+- first quality gate:
+  - stabilize scan cleanliness before deeper rendering changes
+  - introduce a dedicated filtered scan path instead of mutating `/scan` directly
+  - prefer `/slam/mapper/scan/filtered` as the runtime scan contract
 - compare the current pipeline against `slam_toolbox` concepts
   - `slam_toolbox` keeps posed scans in the pose graph and constructs the published map from those posed scans
   - `slam_toolbox` also exposes mapping/localization modes, rolling scan buffers, and pose-graph-backed map publication
@@ -106,6 +111,7 @@ This project is building toward a standalone SLAM mapping line with:
   - keep a working buffer separate from a graph-backed rendered map
   - make rebuild quality measurable instead of just visually judged
 - likely first changes
+  - add `slam_laser_filter` for near-max-range leakage and angle-mask cleanup
   - audit whether every incoming scan should be committed immediately to the global map
   - add a render-oriented map path that prioritizes stable wall lines over aggressive free-space carving
   - re-check endpoint hit logic, free-cell raytrace balance, and refinement side effects

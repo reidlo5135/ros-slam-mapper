@@ -1,7 +1,7 @@
 from launch import LaunchDescription
 from launch.actions import EmitEvent, RegisterEventHandler
 from launch.substitutions import PathJoinSubstitution
-from launch_ros.actions import LifecycleNode
+from launch_ros.actions import LifecycleNode, Node
 from launch_ros.events.lifecycle import ChangeState
 from launch_ros.event_handlers import OnStateTransition
 from launch_ros.substitutions import FindPackageShare
@@ -50,6 +50,15 @@ def generate_launch_description() -> LaunchDescription:
         [FindPackageShare("slam_bringup"), "params", "slam.yaml"]
     )
 
+    slam_laser_filter = Node(
+        package="slam_laser_filter",
+        executable="slam_laser_filter",
+        namespace="slam",
+        name="slam_laser_filter",
+        output="screen",
+        parameters=[params_file],
+    )
+
     slam_scan_matcher = build_lifecycle_node(
         "slam_scan_matcher",
         "slam_scan_matcher",
@@ -70,6 +79,7 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     entities = [
+        slam_laser_filter,
         slam_scan_matcher,
         slam_submap_server,
         slam_pgraph_server,

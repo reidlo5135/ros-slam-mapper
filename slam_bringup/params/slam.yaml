@@ -1,9 +1,20 @@
+/slam/slam_laser_filter:
+  ros__parameters:
+    topics:
+      scan_in: "/scan"
+      scan_out: "/slam/mapper/scan/filtered"
+    filters:
+      reject_near_max_range: true
+      max_range_margin: 0.05
+      replace_with_infinity: true
+      masked_angle_ranges_deg: []
+
 /slam/slam_scan_matcher:
   ros__parameters:
     topics:
       odom: "/odom"
       imu: "/imu"
-      scan: "/scan"
+      scan: "/slam/mapper/scan/filtered"
     motion_prior:
       use_imu_heading: false
       imu_heading_rotation_threshold: 0.25
@@ -71,7 +82,7 @@
     topics:
       odom: "/odom"
       imu: "/imu"
-      scan: "/scan"
+      scan: "/slam/mapper/scan/filtered"
       temp_map: "/slam/map/temp"
       temp_map_raw: "/slam/map/temp/raw"
       temp_map_refined: "/slam/map/temp/refined"
