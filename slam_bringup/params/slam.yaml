@@ -69,9 +69,6 @@
       free_score_threshold: -5
       score_min: -20
       score_max: 100
-      endpoint_support_radius_cells: 1
-      endpoint_support_score: 8
-      endpoint_free_guard_cells: 1
     refinement:
       min_occupied_neighbor_count: 2
       min_free_neighbor_count: 4
@@ -139,9 +136,6 @@
       free_score_threshold: -5
       score_min: -20
       score_max: 100
-      endpoint_support_radius_cells: 1
-      endpoint_support_score: 8
-      endpoint_free_guard_cells: 1
     refinement:
       min_occupied_neighbor_count: 2
       min_free_neighbor_count: 4

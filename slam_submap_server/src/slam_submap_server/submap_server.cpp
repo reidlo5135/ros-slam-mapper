@@ -19,9 +19,6 @@ SubmapServer::SubmapServer()
   mapping_free_score_threshold_(-5),
   mapping_score_min_(-20),
   mapping_score_max_(100),
-  occupancy_endpoint_support_radius_cells_(1),
-  occupancy_endpoint_support_score_(8),
-  occupancy_endpoint_free_guard_cells_(1),
   refinement_min_occupied_neighbor_count_(2),
   refinement_min_free_neighbor_count_(4)
 {
@@ -43,12 +40,6 @@ void SubmapServer::declare_parameters(rclcpp_lifecycle::LifecycleNode &node) con
     "occupancy.free_score_threshold", this->mapping_free_score_threshold_);
   node.declare_parameter("occupancy.score_min", this->mapping_score_min_);
   node.declare_parameter("occupancy.score_max", this->mapping_score_max_);
-  node.declare_parameter(
-    "occupancy.endpoint_support_radius_cells", this->occupancy_endpoint_support_radius_cells_);
-  node.declare_parameter(
-    "occupancy.endpoint_support_score", this->occupancy_endpoint_support_score_);
-  node.declare_parameter(
-    "occupancy.endpoint_free_guard_cells", this->occupancy_endpoint_free_guard_cells_);
   node.declare_parameter(
     "refinement.min_occupied_neighbor_count", this->refinement_min_occupied_neighbor_count_);
   node.declare_parameter(
@@ -73,12 +64,6 @@ void SubmapServer::load_parameters(rclcpp_lifecycle::LifecycleNode &node)
     "occupancy.free_score_threshold", this->mapping_free_score_threshold_);
   node.get_parameter("occupancy.score_min", this->mapping_score_min_);
   node.get_parameter("occupancy.score_max", this->mapping_score_max_);
-  node.get_parameter(
-    "occupancy.endpoint_support_radius_cells", this->occupancy_endpoint_support_radius_cells_);
-  node.get_parameter(
-    "occupancy.endpoint_support_score", this->occupancy_endpoint_support_score_);
-  node.get_parameter(
-    "occupancy.endpoint_free_guard_cells", this->occupancy_endpoint_free_guard_cells_);
   node.get_parameter(
     "refinement.min_occupied_neighbor_count", this->refinement_min_occupied_neighbor_count_);
   node.get_parameter(
@@ -305,17 +290,9 @@ void SubmapServer::integrate_scan_into_map(
       continue;
     }
 
-    this->raytrace_free_cells(
-      map,
-      occupancy_scores,
-      start_x,
-      start_y,
-      end_x,
-      end_y,
-      std::max(0, this->occupancy_endpoint_free_guard_cells_));
+    this->raytrace_free_cells(map, occupancy_scores, start_x, start_y, end_x, end_y);
     if (has_hit) {
       this->mark_occupied_cell(map, occupancy_scores, end_x, end_y);
-      this->mark_occupied_endpoint_support(map, occupancy_scores, end_x, end_y);
     }
   }
 }
@@ -400,8 +377,7 @@ void SubmapServer::raytrace_free_cells(
   int start_x,
   int start_y,
   int end_x,
-  int end_y,
-  int endpoint_free_guard_cells) const
+  int end_y) const
 {
   int x = start_x;
   int y = start_y;
@@ -412,10 +388,7 @@ void SubmapServer::raytrace_free_cells(
   int error = delta_x - delta_y;
 
   while (x != end_x || y != end_y) {
-    const int distance_to_endpoint = std::max(std::abs(end_x - x), std::abs(end_y - y));
-    if (distance_to_endpoint > endpoint_free_guard_cells) {
-      this->mark_free_cell(map, occupancy_scores, x, y);
-    }
+    this->mark_free_cell(map, occupancy_scores, x, y);
     const int doubled_error = 2 * error;
     if (doubled_error > -delta_y) {
       error -= delta_y;
@@ -444,38 +417,6 @@ void SubmapServer::mark_occupied_cell(
   int grid_y) const
 {
   this->update_cell_score(map, occupancy_scores, grid_x, grid_y, this->mapping_hit_score_);
-}
-
-void SubmapServer::mark_occupied_endpoint_support(
-  nav_msgs::msg::OccupancyGrid &map,
-  std::vector<int16_t> &occupancy_scores,
-  int grid_x,
-  int grid_y) const
-{
-  const int support_radius = std::max(0, this->occupancy_endpoint_support_radius_cells_);
-  const int support_score = std::max(0, this->occupancy_endpoint_support_score_);
-  if (support_radius == 0 || support_score == 0) {
-    return;
-  }
-
-  for (int offset_y = -support_radius; offset_y <= support_radius; ++offset_y) {
-    for (int offset_x = -support_radius; offset_x <= support_radius; ++offset_x) {
-      if (offset_x == 0 && offset_y == 0) {
-        continue;
-      }
-
-      if (std::max(std::abs(offset_x), std::abs(offset_y)) > support_radius) {
-        continue;
-      }
-
-      this->update_cell_score(
-        map,
-        occupancy_scores,
-        grid_x + offset_x,
-        grid_y + offset_y,
-        support_score);
-    }
-  }
 }
 
 }  // namespace slam::submap::server

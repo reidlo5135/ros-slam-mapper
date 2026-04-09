@@ -50,9 +50,6 @@ private:
   int mapping_free_score_threshold_;
   int mapping_score_min_;
   int mapping_score_max_;
-  int occupancy_endpoint_support_radius_cells_;
-  int occupancy_endpoint_support_score_;
-  int occupancy_endpoint_free_guard_cells_;
   int refinement_min_occupied_neighbor_count_;
   int refinement_min_free_neighbor_count_;
 
@@ -99,19 +96,13 @@ private:
     int start_x,
     int start_y,
     int end_x,
-    int end_y,
-    int endpoint_free_guard_cells) const;
+    int end_y) const;
   void mark_free_cell(
     nav_msgs::msg::OccupancyGrid &map,
     std::vector<int16_t> &occupancy_scores,
     int grid_x,
     int grid_y) const;
   void mark_occupied_cell(
-    nav_msgs::msg::OccupancyGrid &map,
-    std::vector<int16_t> &occupancy_scores,
-    int grid_x,
-    int grid_y) const;
-  void mark_occupied_endpoint_support(
     nav_msgs::msg::OccupancyGrid &map,
     std::vector<int16_t> &occupancy_scores,
     int grid_x,
