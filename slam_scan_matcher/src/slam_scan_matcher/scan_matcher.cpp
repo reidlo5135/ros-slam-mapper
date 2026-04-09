@@ -442,7 +442,7 @@ ScanMatcher::CandidateScore ScanMatcher::evaluate_candidate_score(
         (static_cast<double>(cell_value) - 50.0) / 50.0,
         0.0,
         1.0);
-      score += this->scan_matching_occupied_match_score_ * (1.0 + (0.25 * occupied_confidence));
+      score += this->scan_matching_occupied_match_score_ * (1.0 + (0.10 * occupied_confidence));
       continue;
     }
 
@@ -461,7 +461,7 @@ ScanMatcher::CandidateScore ScanMatcher::evaluate_candidate_score(
         1.0);
       const double closeness_score = 1.0 - normalized_distance;
       const double proximity_score =
-        (this->scan_matching_distance_match_score_ * closeness_score * closeness_score) -
+        (this->scan_matching_distance_match_score_ * closeness_score) -
         (this->scan_matching_distance_penalty_per_cell_ * nearest_distance_cells);
       if (proximity_score > 0.0) {
         score += proximity_score;
