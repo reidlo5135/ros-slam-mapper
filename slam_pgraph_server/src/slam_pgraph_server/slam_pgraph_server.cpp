@@ -253,7 +253,19 @@ SlamPGraphServer::CallbackReturn SlamPGraphServer::on_shutdown(const rclcpp_life
 
 void SlamPGraphServer::publish_outputs()
 {
-  this->submap_server_.refresh_refined_map(this->now());
+  if (!this->pose_graph_server_.graph_nodes().empty()) {
+    std::vector<slam::submap::server::SubmapNode> render_nodes;
+    render_nodes.reserve(this->pose_graph_server_.graph_nodes().size());
+    for (const GraphNode &graph_node : this->pose_graph_server_.graph_nodes()) {
+      slam::submap::server::SubmapNode render_node;
+      render_node.map_pose = graph_node.map_pose;
+      render_node.scan = graph_node.scan;
+      render_nodes.push_back(render_node);
+    }
+    this->submap_server_.refresh_refined_map_from_pose_graph(render_nodes, this->now());
+  } else {
+    this->submap_server_.refresh_refined_map(this->now());
+  }
   this->publish_raw_temporary_map();
   this->publish_refined_temporary_map();
   this->publish_temporary_map();

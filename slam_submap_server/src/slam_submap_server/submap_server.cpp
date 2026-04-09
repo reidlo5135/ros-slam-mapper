@@ -76,7 +76,7 @@ void SubmapServer::reset(const std::string &frame_id, const rclcpp::Time &stamp)
   this->initialize_mapping_map(stamp);
 }
 
-void SubmapServer::initialize_mapping_map(const rclcpp::Time &stamp)
+nav_msgs::msg::OccupancyGrid SubmapServer::create_empty_map(const rclcpp::Time &stamp) const
 {
   nav_msgs::msg::OccupancyGrid initialized_map;
   initialized_map.header.stamp = stamp;
@@ -95,13 +95,24 @@ void SubmapServer::initialize_mapping_map(const rclcpp::Time &stamp)
   initialized_map.data.assign(
     static_cast<std::size_t>(this->mapping_width_ * this->mapping_height_),
     static_cast<int8_t>(-1));
+  return initialized_map;
+}
+
+std::vector<int16_t> SubmapServer::create_empty_scores() const
+{
+  return std::vector<int16_t>(
+    static_cast<std::size_t>(this->mapping_width_ * this->mapping_height_),
+    0);
+}
+
+void SubmapServer::initialize_mapping_map(const rclcpp::Time &stamp)
+{
+  nav_msgs::msg::OccupancyGrid initialized_map = this->create_empty_map(stamp);
 
   std::scoped_lock<std::mutex> lock(this->map_mutex_);
   this->temporary_map_ = initialized_map;
   this->refined_temporary_map_ = this->temporary_map_;
-  this->occupancy_scores_.assign(
-    static_cast<std::size_t>(this->mapping_width_ * this->mapping_height_),
-    0);
+  this->occupancy_scores_ = this->create_empty_scores();
 }
 
 void SubmapServer::integrate_scan(
@@ -132,6 +143,27 @@ void SubmapServer::refresh_refined_map(const rclcpp::Time &stamp)
   }
 
   nav_msgs::msg::OccupancyGrid refined_map = this->build_refined_map(raw_snapshot);
+  refined_map.header.stamp = stamp;
+  refined_map.info.map_load_time = refined_map.header.stamp;
+
+  {
+    std::scoped_lock<std::mutex> lock(this->map_mutex_);
+    this->refined_temporary_map_ = refined_map;
+  }
+}
+
+void SubmapServer::refresh_refined_map_from_pose_graph(
+  const std::vector<SubmapNode> &graph_nodes,
+  const rclcpp::Time &stamp)
+{
+  nav_msgs::msg::OccupancyGrid rendered_map = this->create_empty_map(stamp);
+  std::vector<int16_t> rendered_scores = this->create_empty_scores();
+
+  for (const SubmapNode &node : graph_nodes) {
+    this->integrate_scan_into_map(node.scan, node.map_pose, rendered_map, rendered_scores);
+  }
+
+  nav_msgs::msg::OccupancyGrid refined_map = this->build_refined_map(rendered_map);
   refined_map.header.stamp = stamp;
   refined_map.info.map_load_time = refined_map.header.stamp;
 
