@@ -1,6 +1,13 @@
 from launch import LaunchDescription
-from launch.actions import EmitEvent, RegisterEventHandler
-from launch.substitutions import PathJoinSubstitution
+from launch.actions import (
+    DeclareLaunchArgument,
+    EmitEvent,
+    IncludeLaunchDescription,
+    RegisterEventHandler,
+)
+from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import LifecycleNode
 from launch_ros.events.lifecycle import ChangeState
 from launch_ros.event_handlers import OnStateTransition
@@ -46,8 +53,22 @@ def build_activation_chain(node: LifecycleNode):
 
 
 def generate_launch_description() -> LaunchDescription:
+    robot_bringup = LaunchConfiguration("robot_bringup")
     params_file = PathJoinSubstitution(
         [FindPackageShare("slam_bringup"), "params", "slam.yaml"]
+    )
+    robot_launch_file = PathJoinSubstitution(
+        [FindPackageShare("turtlebot3_bringup"), "launch", "robot.launch.py"]
+    )
+
+    robot_bringup_argument = DeclareLaunchArgument(
+        "robot_bringup",
+        default_value="false",
+        description="When true, include turtlebot3_bringup robot.launch.py before SLAM nodes.",
+    )
+    robot_bringup_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(robot_launch_file),
+        condition=IfCondition(robot_bringup),
     )
 
     slam_scan_matcher = build_lifecycle_node(
@@ -70,6 +91,8 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     entities = [
+        robot_bringup_argument,
+        robot_bringup_launch,
         slam_scan_matcher,
         slam_submap_server,
         slam_pgraph_server,

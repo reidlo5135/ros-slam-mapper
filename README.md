@@ -96,6 +96,17 @@ Current active packages:
 ros2 launch slam_bringup slam.launch.py
 ```
 
+With TurtleBot3 robot bringup included first:
+
+```bash
+ros2 launch slam_bringup slam.launch.py robot_bringup:=true
+```
+
+Notes:
+- default is `robot_bringup:=false`
+- when `true`, `turtlebot3_bringup/launch/robot.launch.py` is included before the SLAM lifecycle nodes
+- when `false`, `/odom`, `/imu`, and `/scan` are expected to already be available from an external bringup
+
 ## Build Intent
 
 When package scaffolding lands, the repo should stay buildable with standard ROS 2 Humble `colcon build` flows.

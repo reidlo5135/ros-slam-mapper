@@ -1,6 +1,15 @@
 Changelog
 =========
 
+2026-04-09
+----------
+
+- Started the ``0.2.2`` follow-up branch:
+
+  - added an optional ``robot_bringup`` launch argument to ``slam_bringup/launch/slam.launch.py``
+  - included ``turtlebot3_bringup/launch/robot.launch.py`` before SLAM node startup when ``robot_bringup:=true``
+  - documented the split between standalone SLAM bringup and external robot bringup in ``README.md``
+
 2026-04-06
 ----------
 
