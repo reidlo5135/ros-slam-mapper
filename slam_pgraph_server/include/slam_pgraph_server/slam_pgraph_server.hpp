@@ -47,6 +47,7 @@ private:
   slam::scan::matcher::ScanMatcher scan_matcher_;
   PoseGraphServer pose_graph_server_;
   slam::submap::server::SubmapServer submap_server_;
+  slam::submap::server::SubmapServer render_submap_server_;
 
   nav_msgs::msg::Odometry latest_odometry_{};
   Pose2D current_corrected_pose_{};

@@ -67,8 +67,10 @@ SlamPGraphServer::CallbackReturn SlamPGraphServer::on_configure(const rclcpp_lif
   this->scan_matcher_.load_parameters(*this);
   this->pose_graph_server_.load_parameters(*this);
   this->submap_server_.load_parameters(*this);
+  this->render_submap_server_.load_parameters(*this);
   this->pose_graph_server_.reset();
   this->submap_server_.reset(this->frame_id_, this->now());
+  this->render_submap_server_.reset(this->frame_id_, this->now());
 
   this->latest_odometry_ = nav_msgs::msg::Odometry();
   this->current_corrected_pose_ = Pose2D{};
@@ -241,6 +243,7 @@ SlamPGraphServer::CallbackReturn SlamPGraphServer::on_cleanup(const rclcpp_lifec
   this->transform_broadcaster_.reset();
   this->pose_graph_server_.reset();
   this->submap_server_.reset(this->frame_id_, this->now());
+  this->render_submap_server_.reset(this->frame_id_, this->now());
   RCLCPP_INFO(this->get_logger(), "Cleaned up SLAM pgraph server");
   return CallbackReturn::SUCCESS;
 }
@@ -262,7 +265,8 @@ void SlamPGraphServer::publish_outputs()
       render_node.scan = graph_node.scan;
       render_nodes.push_back(render_node);
     }
-    this->submap_server_.refresh_refined_map_from_pose_graph(render_nodes, this->now());
+    this->render_submap_server_.rebuild_map_from_pose_graph(render_nodes, this->now());
+    this->render_submap_server_.refresh_refined_map(this->now());
   } else {
     this->submap_server_.refresh_refined_map(this->now());
   }
@@ -283,7 +287,10 @@ void SlamPGraphServer::publish_temporary_map()
     return;
   }
 
-  nav_msgs::msg::OccupancyGrid map_to_publish = this->submap_server_.refined_map();
+  nav_msgs::msg::OccupancyGrid map_to_publish =
+    this->pose_graph_server_.graph_nodes().empty() ?
+    this->submap_server_.refined_map() :
+    this->render_submap_server_.refined_map();
   map_to_publish.header.stamp = this->now();
   map_to_publish.info.map_load_time = map_to_publish.header.stamp;
   this->temporary_map_publisher_->publish(map_to_publish);
@@ -310,7 +317,10 @@ void SlamPGraphServer::publish_refined_temporary_map()
     return;
   }
 
-  nav_msgs::msg::OccupancyGrid map_to_publish = this->submap_server_.refined_map();
+  nav_msgs::msg::OccupancyGrid map_to_publish =
+    this->pose_graph_server_.graph_nodes().empty() ?
+    this->submap_server_.refined_map() :
+    this->render_submap_server_.refined_map();
   map_to_publish.header.stamp = this->now();
   map_to_publish.info.map_load_time = map_to_publish.header.stamp;
   this->refined_temporary_map_publisher_->publish(map_to_publish);
