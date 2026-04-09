@@ -19,7 +19,7 @@ SlamLaserFilter::SlamLaserFilter(const rclcpp::NodeOptions &options)
 : rclcpp::Node("slam_laser_filter", options),
   scan_input_topic_("/scan"),
   scan_output_topic_("/slam/mapper/scan/filtered"),
-  reject_near_max_range_(true),
+  reject_near_max_range_(false),
   max_range_margin_(0.05),
   replace_with_infinity_(true)
 {
@@ -51,6 +51,9 @@ SlamLaserFilter::SlamLaserFilter(const rclcpp::NodeOptions &options)
     this->reject_near_max_range_ ? "true" : "false",
     this->max_range_margin_,
     this->masked_angle_ranges_rad_.size());
+  RCLCPP_INFO(
+    this->get_logger(),
+    "Laser filter policy keeps drawing range by default; use masked_angle_ranges_deg for fixed noise sectors and enable reject_near_max_range only when long-range leakage is clearly worse than range loss");
 }
 
 void SlamLaserFilter::load_parameters()

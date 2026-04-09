@@ -9,18 +9,17 @@ timeline
     0.2.x : `0.2.1` pose baseline reset
           : observability and replay discipline
           : repeatable regression runs
-    0.3.x : map representation / rendering reset
-          : scan pre-filter and line clustering
-          : posed-scan integration quality
+    0.3.x : scan hygiene and graph-backed render split
+          : drawing range recovery
+          : posed-scan render baseline
+    0.4.x : line-preserving renderer
+          : clustered wall rendering
           : rebuild-safe global map generation
-    0.4.x : karto-family front-end uplift
-          : local scan matching quality
+    0.5.x : karto-family front-end uplift
+          : aggressive-turn robustness
           : wide-area drift containment
-    0.5.x : loop acceptance hardening
-          : candidate filtering and rescoring
-          : false-positive resistant closure policy
-    0.6.x : pose-graph optimizer upgrade
-          : anchor strategy and solver quality
+    0.6.x : loop acceptance and optimizer hardening
+          : candidate filtering and anchor strategy
           : loop correction stability
     0.7.x : real submap architecture
           : active local submap matching
@@ -38,6 +37,9 @@ This project is building toward a standalone SLAM mapping line with:
 - conservative loop closure behavior
 - enough observability to compare scan matching, keyframe, optimizer, and rebuild changes cleanly
 - a long-term architecture that can follow the stronger ideas in `slam_toolbox` without losing the simpler `amr_slam_mapper` baseline
+- a concrete quality target of:
+  - `0.2.1`-level pose quality
+  - `slam_toolbox`-like wall continuity, line exactness, and drawing range
 
 ## 0.1.x Goal
 
@@ -93,6 +95,10 @@ This project is building toward a standalone SLAM mapping line with:
 
 ### 4. Map Representation / Rendering Reset
 
+- current status:
+  - `0.2.1` remains the pose / localization baseline
+  - `0.3.0` introduced a graph-backed render path and a dedicated filtered scan contract
+  - line formation, drawing range, and revisit clustering are still clearly behind `slam_toolbox`
 - first quality gate:
   - stabilize scan cleanliness before deeper rendering changes
   - introduce a dedicated filtered scan path instead of mutating `/scan` directly
@@ -110,8 +116,9 @@ This project is building toward a standalone SLAM mapping line with:
   - move toward a `posed scan set -> rendered map` mindset
   - keep a working buffer separate from a graph-backed rendered map
   - make rebuild quality measurable instead of just visually judged
-- likely first changes
-  - add `slam_laser_filter` for near-max-range leakage and angle-mask cleanup
+- likely next changes
+  - re-tune filtered scan policy so that noise is reduced without collapsing drawing range
+  - compare `/scan` vs `/slam/mapper/scan/filtered` specifically on window / glass / long-range wall cases
   - audit whether every incoming scan should be committed immediately to the global map
   - add a render-oriented map path that prioritizes stable wall lines over aggressive free-space carving
   - re-check endpoint hit logic, free-cell raytrace balance, and refinement side effects
@@ -121,10 +128,76 @@ This project is building toward a standalone SLAM mapping line with:
   - map quality improves without needing worse pose correction
   - loop rebuild keeps more wall continuity and fewer wipeout artifacts
 
+### 4A. Phase 1: Scan Hygiene And Range Policy
+
+- keep `0.2.1` pose behavior untouched
+- use `slam_laser_filter` only as a pre-filter, never as a hidden behavior change
+- current issues to solve:
+  - window / glass leakage
+  - near-max-range noise
+  - drawing range becoming too short compared with `slam_toolbox`
+  - aggressive-turn beam loss causing unstable `map -> odom`
+- next actions
+  - keep `reject_near_max_range=false` as the default noise-only policy
+  - only enable global near-max-range suppression when the site-specific leakage is worse than the lost drawing range
+  - prefer angle-mask filtering over global long-range suppression where possible
+  - document the sensor sectors that should be masked for this robot / site
+  - measure valid beam count drop during aggressive turns
+- pass criteria
+  - obvious window leakage is reduced
+  - far wall drawing range is not visibly worse than the unfiltered baseline
+  - turn-induced `map -> odom` jumps do not increase
+
+### 4B. Phase 2: Graph-Backed Render Baseline
+
+- keep `raw_map` as the working map for front-end scan matching
+- keep `refined_map` as the display / quality path driven by pose-graph-backed scans
+- current issues to solve:
+  - loop pre/post map can look less crisp after rebuild
+  - graph-backed render still behaves like repeated point stamping, not wall rendering
+- next actions
+  - keep the graph-backed render split
+  - compare pre-loop and post-loop refined map quality on the same trajectory
+  - measure whether rebuild keeps or destroys wall continuity
+- pass criteria
+  - refined map is globally more stable than raw map
+  - loop correction no longer makes the map obviously uglier just because scans were replayed
+
+### 4C. Phase 3: Line-Preserving Rasterization
+
+- this is the current main technical gap versus `slam_toolbox`
+- current issues to solve:
+  - endpoint-only occupied hits produce dotted / banded walls
+  - free raytrace is strong enough to tear thin structures
+  - refinement deletes isolated points but does not form coherent lines
+- next actions
+  - change occupied-hit integration from single-cell stamping to small wall-preserving support
+  - reduce destructive free-space carving near wall endpoints
+  - redesign refinement toward line preservation instead of isolated-point cleanup only
+  - compare wall thickness, continuity, and double-line artifacts before and after rebuild
+- pass criteria
+  - walls look like single stable lines more often than dotted bands
+  - revisit paths do not leave obvious parallel wall copies
+  - refined map gets visually closer to `slam_toolbox` without pose regression
+
+### 4D. Phase 4: Revisit-Weighted Render Fusion
+
+- once line-preserving rasterization exists, improve which evidence wins
+- current issues to solve:
+  - repeated passes on slightly different pose-lines create double walls
+  - high-confidence revisits are not rendered more strongly than weak one-off hits
+- next actions
+  - add render weighting ideas such as revisit count, hit persistence, or confidence-biased fusion
+  - favor repeated consistent observations over sparse outliers
+  - evaluate whether pose-graph node confidence can influence render weight
+- pass criteria
+  - duplicated parallel wall traces shrink
+  - dominant wall hypotheses become visually stronger after revisits
+
 ### 5. Karto-Family Front-End
 
 - front-end is the next major development target
-- move toward a more Karto-like local matching mindset before larger back-end surgery
+- move toward a more Karto-like local matching mindset after map-quality regressions are isolated
 - `karto` here means a practical 2D lidar SLAM front-end style:
   - start from odom / limited IMU prior
   - search around the predicted pose
@@ -144,6 +217,7 @@ This project is building toward a standalone SLAM mapping line with:
   - local scan matching robustness
   - scan buffer / local context usage
   - wide-area travel stability before loop closure
+  - aggressive-turn stability before loop closure
 - pass criteria
   - straight segments stay stable
   - large turns do not immediately bend the local map
@@ -153,6 +227,7 @@ This project is building toward a standalone SLAM mapping line with:
   - front-end becomes harder to reason about
   - straight-line quality regresses
   - loop quality only looks better because false constraints were accepted
+  - turn recovery improves only by allowing larger unsafe corrections
 
 #### Karto-Family Mapping Sequence
 
@@ -242,46 +317,26 @@ sequenceDiagram
   - candidate separation quality
   - exact-hit vs proximity balance
   - confidence / rejectability, not aggressive early correction
+  - rotation-heavy segment robustness without over-driving `map -> odom`
 
-### 6. Loop Search And Acceptance
+### 6. Loop Search, Acceptance, And Optimizer Hardening
 
 - compare against stronger `slam_toolbox` ideas without copying blindly
 - improve:
   - candidate search observability
   - coarse/fine style rescoring
   - conservative acceptance gates
+  - optimizer anchor and revisit consistency
 - keep false loop rejection ahead of recall
 - pass criteria
   - loop creation does not immediately drag `map -> odom`
   - accepted loop closures improve alignment without pixel wipeout
+  - post-loop map quality is at least as clean as the best pre-loop local map
 - fail criteria
   - early but weak loop acceptance
   - prettier maps caused by unsafe loop constraints
 
-### 7. Pose-Graph Optimizer Upgrade
-
-- keep a pose-graph optimizer mindset
-  - keyframes
-  - odom edges
-  - conservative loop edges
-  - graph-based correction
-- focus on:
-  - anchor strategy
-  - loop edge weighting
-  - step-size stability
-  - prior pose pullback behavior
-- long-term direction:
-  - separate optimizer abstraction
-  - evaluate stronger solver options after current limits are proven
-- pass criteria
-  - loop return aligns better with the original straight axis
-  - accepted loop closures do not tip the whole map
-  - optimize/rebuild preserves more of the existing map evidence
-- fail criteria
-  - optimizer tears or over-rotates the map
-  - map quality drops after every accepted loop
-
-### 8. Real Submap Architecture
+### 7. Real Submap Architecture
 
 - use submaps as the structural answer to wide-area drift and rebuild quality, not as an early escape hatch
 - move here after front-end and optimizer observability are good enough
@@ -294,7 +349,7 @@ sequenceDiagram
   - wider excursions keep local consistency better
   - loop corrections no longer require heavy full-map redraw side effects
 
-### 9. Mapping Productization
+### 8. Mapping Productization
 
 - follow selected `slam_toolbox` strengths over time
   - serialization / deserialization
@@ -307,11 +362,11 @@ sequenceDiagram
 
 1. keep the current `0.14.4` baseline stable and measurable
 2. freeze `0.2.1` as the pose-estimation baseline
-3. improve observability until pose / render / rebuild failures are separately explainable
+3. stabilize scan hygiene and range policy before deeper rendering changes
 4. refactor map representation and rendering toward a posed-scan / graph-backed model
-5. resume front-end upgrades only after map-quality regressions are isolated
-6. harden loop candidate search and acceptance policy
-7. improve the pose-graph optimizer only after front-end and render quality are clearer
+5. improve line-preserving rasterization and revisit-weighted render fusion
+6. resume front-end upgrades only after map-quality regressions are isolated
+7. harden loop candidate search and optimizer behavior together
 8. introduce real submap architecture when the single-map limits are proven in data
 9. add product-level capabilities after the core mapping path is trustworthy
 
@@ -342,11 +397,16 @@ sequenceDiagram
   - `slam_toolbox` publishes a map built from posed scans in the pose graph
   - `slam_toolbox` distinguishes mapping / localization behavior with buffered scans
   - `slam_toolbox` exposes graph-backed map publication rather than only mutating one temporary grid in-place
-- first refactor targets for the next version
-  - separate a graph-backed render path from the always-mutating temp map path
-  - audit free-space raytrace aggressiveness versus endpoint hit accumulation
-  - measure raw/refined/rebuild map retention on the same route
-  - prioritize stable global wall rendering over “integrate everything immediately”
+- current observations
+  - graph-backed render split helps line formation but still behaves too point-wise
+  - `slam_laser_filter` helps scan cleanliness but can shorten drawing range if over-applied
+  - aggressive turns can still create temporary `map -> odom` instability before revisit correction
+  - post-loop maps can look worse than pre-loop maps because rendering maturity still lags pose quality
+- next working order
+  - tune scan hygiene and range policy first
+  - then improve line-preserving rasterization
+  - then add revisit-weighted render fusion
+  - only after that reopen front-end score-model work
 
 ### 2026-04-08
 

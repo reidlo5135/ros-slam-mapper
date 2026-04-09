@@ -4,7 +4,7 @@
       scan_in: "/scan"
       scan_out: "/slam/mapper/scan/filtered"
     filters:
-      reject_near_max_range: true
+      reject_near_max_range: false
       max_range_margin: 0.05
       replace_with_infinity: true
       masked_angle_ranges_deg: [9999.0, 9999.0]

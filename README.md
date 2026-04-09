@@ -93,6 +93,11 @@ Current active packages:
 - `slam_pgraph_server`
 - `slam_submap_server`
 
+`slam_laser_filter` is intended to be noise-only by default:
+- preserve drawing range unless a site-specific problem proves otherwise
+- prefer fixed angle masking for window / glass leakage
+- enable near-max-range rejection only when long-range noise is worse than the lost wall evidence
+
 ## Launch
 
 ```bash
